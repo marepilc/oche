@@ -10,10 +10,26 @@
   import Trend from '$lib/stats/Trend.svelte';
 
   const KEY = 'oche:stats-player';
+  const RANGE_KEY = 'oche:stats-range';
+  const RANGES = ['30', '90', '365', 'all'] as const;
+  type Range = (typeof RANGES)[number];
+
   let players = $state<Player[]>([]);
   let current = $state<string | null>(null);
   let stats = $state<PlayerStats | null>(null);
+  let all = $state<Map<string, PlayerStats>>(new Map());
   let error = $state('');
+  let range = $state<Range>(
+    (() => {
+      try {
+        const r = localStorage.getItem(RANGE_KEY);
+        return (RANGES as readonly string[]).includes(r ?? '') ? (r as Range) : 'all';
+      } catch {
+        return 'all';
+      }
+    })(),
+  );
+  const since = $derived(range === 'all' ? null : new Date(Date.now() - Number(range) * 86_400_000).toISOString());
 
   loadPlayers()
     .then((p) => {
@@ -36,12 +52,50 @@
     } catch {
       /* not critical */
     }
-    playerStats(id)
+    const from = since;
+    playerStats(id, from)
       .then((s) => {
-        if (current === id) stats = s;
+        if (current === id && since === from) stats = s;
       })
       .catch((e) => (error = String(e)));
   });
+
+  // Every player's numbers for the comparison table.
+  $effect(() => {
+    const from = since;
+    try {
+      localStorage.setItem(RANGE_KEY, range);
+    } catch {
+      /* not critical */
+    }
+    if (players.length < 2) return;
+    Promise.all(players.map((p) => playerStats(p.id, from).then((s) => [p.id, s] as const)))
+      .then((rows) => {
+        if (since === from) all = new Map(rows);
+      })
+      .catch((e) => (error = String(e)));
+  });
+
+  interface Column {
+    label: string;
+    value: (s: PlayerStats) => number | null;
+    text: (v: number) => string;
+    /** Lower is better (darts per leg). */
+    low?: boolean;
+  }
+  const columns: Column[] = $derived([
+    { label: t('stats.x01avg'), value: (s) => (s.darts ? avg(s.scored, s.darts) : null), text: decimal },
+    { label: t('stats.first9'), value: (s) => (s.first9Darts ? avg(s.first9Scored, s.first9Darts) : null), text: decimal },
+    { label: t('stats.checkout'), value: (s) => (s.checkoutChances ? s.checkouts / s.checkoutChances : null), text: (v) => pct(v, 1) },
+    { label: '180', value: (s) => (s.darts ? s.n180 : null), text: String },
+    { label: t('stats.bestLeg'), value: (s) => s.bestLeg, text: String, low: true },
+    { label: t('stats.mpr'), value: (s) => (s.cricket.darts ? (s.cricket.marks / s.cricket.darts) * 3 : null), text: decimal },
+    { label: t('stats.atcBest'), value: (s) => s.atc.bestLeg, text: String, low: true },
+  ]);
+  const best = (c: Column) => {
+    const vs = [...all.values()].map(c.value).filter((v): v is number => v !== null);
+    return vs.length ? (c.low ? Math.min(...vs) : Math.max(...vs)) : null;
+  };
 
   function onkeydown(e: KeyboardEvent) {
     if (e.ctrlKey || e.altKey || e.metaKey || players.length < 2) return;
@@ -127,6 +181,11 @@
       {#each players as p (p.id)}
         <button role="tab" aria-selected={p.id === current} class:on={p.id === current} onclick={() => (current = p.id)}>{p.name}</button>
       {/each}
+      <div class="range" role="radiogroup" aria-label={t('stats.range')}>
+        {#each RANGES as r (r)}
+          <label><input type="radio" name="range" value={r} bind:group={range} /> {t(r === 'all' ? 'stats.rangeAll' : (`stats.range${r}` as MessageKey))}</label>
+        {/each}
+      </div>
       {#if players.length > 1}
         <span class="hint">
           {#each t('stats.keys').split(/(\{\w+\})/) as part, k (k)}
@@ -232,6 +291,35 @@
         </section>
       {/if}
     </div>
+
+    {#if players.length > 1 && all.size}
+      <section>
+        <div class="label">{t('stats.compare')}</div>
+        <div class="scroll">
+          <table class="cmp">
+            <thead>
+              <tr>
+                <th>{t('stats.player')}</th>
+                {#each columns as c (c.label)}<th>{c.label}</th>{/each}
+              </tr>
+            </thead>
+            <tbody>
+              {#each players as p (p.id)}
+                {@const s = all.get(p.id)}
+                <tr class:on={p.id === current} onclick={() => (current = p.id)}>
+                  <th>{p.name}</th>
+                  {#each columns as c (c.label)}
+                    {@const v = s ? c.value(s) : null}
+                    {@const top = v !== null && v === best(c)}
+                    <td class:top title={top ? t('stats.bestCol') : undefined}>{v === null ? '—' : c.text(v)}</td>
+                  {/each}
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {/if}
   {/if}
 </div>
 
@@ -252,6 +340,21 @@
   .drill { border: 1px solid var(--line); border-radius: var(--r); padding: 8px 12px; display: grid; gap: 6px; }
   .dhead { display: flex; justify-content: space-between; align-items: baseline; }
   .dnums { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .range { display: flex; gap: 4px; margin-left: auto; }
+  .range label { border: 1px solid var(--line); border-radius: var(--r); padding: 3px 10px; cursor: pointer; font-size: 12px; color: var(--muted); }
+  .range input { position: absolute; opacity: 0; pointer-events: none; }
+  .range label:has(input:checked) { border-color: var(--accent); color: var(--fg); background: var(--bg-light); }
+  .range label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .scroll { overflow-x: auto; }
+  .cmp { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  .cmp th, .cmp td { padding: 5px 10px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  .cmp thead th { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 400; }
+  .cmp th:first-child { text-align: left; }
+  .cmp tbody tr { cursor: pointer; }
+  .cmp tbody tr.on { background: var(--bg-light); }
+  .cmp td { color: var(--muted); }
+  .cmp td.top { color: var(--fg); font-weight: 700; }
+  .cmp td.top::before { content: '▲ '; color: var(--accent); font-size: 9px; vertical-align: middle; }
   .hint { color: var(--muted); font-size: 11px; }
   .err { color: var(--red); font-size: 12px; }
 </style>

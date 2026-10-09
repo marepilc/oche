@@ -233,6 +233,16 @@ export default {
     mean: 'average {v}',
     session: '{date}: {v}',
     keys: '{lr} change player',
+    range: 'Period',
+    rangeAll: 'all time',
+    range30: '30 days',
+    range90: '90 days',
+    range365: 'year',
+    compare: 'Players compared',
+    player: 'Player',
+    x01avg: 'X01 avg',
+    atcBest: 'ATC best',
+    bestCol: 'best in this column',
   },
 
   settings: {

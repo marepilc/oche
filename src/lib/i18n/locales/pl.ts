@@ -228,6 +228,16 @@ const pl: Messages = {
     mean: 'średnio {v}',
     session: '{date}: {v}',
     keys: '{lr} zmiana gracza',
+    range: 'Okres',
+    rangeAll: 'od początku',
+    range30: '30 dni',
+    range90: '90 dni',
+    range365: 'rok',
+    compare: 'Porównanie graczy',
+    player: 'Gracz',
+    x01avg: 'Średnia X01',
+    atcBest: 'ATC najlepiej',
+    bestCol: 'najlepszy wynik w kolumnie',
   },
 
   settings: {

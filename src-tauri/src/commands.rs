@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use chrono::{DateTime, Utc};
 use serde::Serialize;
 use tauri::State;
 
@@ -53,8 +54,8 @@ pub async fn games_list(db: Db<'_>, limit: Option<i64>) -> Res<Vec<GameSummary>>
 }
 
 #[tauri::command]
-pub async fn player_stats(db: Db<'_>, id: String) -> Res<PlayerStats> {
-    db.local.stats(&id).await.map_err(err)
+pub async fn player_stats(db: Db<'_>, id: String, since: Option<DateTime<Utc>>) -> Res<PlayerStats> {
+    db.local.stats(&id, since).await.map_err(err)
 }
 
 #[derive(Serialize)]

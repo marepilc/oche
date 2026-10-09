@@ -3,7 +3,7 @@
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use chrono::{SubsecRound, Utc};
+use chrono::{DateTime, SubsecRound, Utc};
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::{Row, Sqlite, SqlitePool, Transaction};
 
@@ -306,25 +306,34 @@ impl Local {
 
     /// The most recent games, newest first, with per-player totals.
     pub async fn games(&self, limit: i64) -> Result<Vec<GameSummary>, sqlx::Error> {
-        self.summaries("SELECT * FROM games ORDER BY started_at DESC LIMIT ?2", None, limit).await
+        self.summaries("SELECT * FROM games ORDER BY started_at DESC LIMIT ?2", None, None, limit).await
     }
 
     /// The most recent games of one player, newest first.
-    pub async fn games_of(&self, player: &str, limit: i64) -> Result<Vec<GameSummary>, sqlx::Error> {
+    pub async fn games_of(&self, player: &str, since: Option<DateTime<Utc>>, limit: i64) -> Result<Vec<GameSummary>, sqlx::Error> {
         self.summaries(
             "SELECT * FROM games WHERE id IN (SELECT game_id FROM game_players WHERE player_id = ?1)
+               AND (?3 IS NULL OR started_at >= ?3)
              ORDER BY started_at DESC LIMIT ?2",
             Some(player),
+            since,
             limit,
         )
         .await
     }
 
-    async fn summaries(&self, games: &'static str, player: Option<&str>, limit: i64) -> Result<Vec<GameSummary>, sqlx::Error> {
+    async fn summaries(
+        &self,
+        games: &'static str,
+        player: Option<&str>,
+        since: Option<DateTime<Utc>>,
+        limit: i64,
+    ) -> Result<Vec<GameSummary>, sqlx::Error> {
         let sql = SUMMARIES.replace("{games}", games);
         let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
             .bind(player)
             .bind(limit)
+            .bind(since)
             .fetch_all(&self.pool)
             .await?;
         let mut games: Vec<GameSummary> = Vec::new();
@@ -356,7 +365,7 @@ impl Local {
     }
 
     /// Everything the statistics view shows for one player.
-    pub async fn stats(&self, player: &str) -> Result<PlayerStats, sqlx::Error> {
+    pub async fn stats(&self, player: &str, since: Option<DateTime<Utc>>) -> Result<PlayerStats, sqlx::Error> {
         // X01 turns of the player, numbered within each leg.
         const X01_TURNS: &str = "WITH t AS (
               SELECT t.*, l.game_id, l.winner_id AS leg_winner,
@@ -364,7 +373,7 @@ impl Local {
                      (SELECT COUNT(*) FROM darts d WHERE d.turn_id = t.id) AS darts,
                      COALESCE(json_extract(g.settings_json, '$.doubleOut'), 1) AS double_out
               FROM turns t JOIN legs l ON l.id = t.leg_id JOIN games g ON g.id = l.game_id
-              WHERE g.mode = 'x01' AND t.player_id = ?1)";
+              WHERE g.mode = 'x01' AND t.player_id = ?1 AND (?2 IS NULL OR g.started_at >= ?2))";
 
         let totals = sqlx::query(sqlx::AssertSqlSafe(format!(
             "{X01_TURNS}
@@ -382,6 +391,7 @@ impl Local {
              FROM t"
         )))
         .bind(player)
+        .bind(since)
         .fetch_one(&self.pool)
         .await?;
 
@@ -393,6 +403,7 @@ impl Local {
              FROM t"
         )))
         .bind(player)
+        .bind(since)
         .fetch_one(&self.pool)
         .await?;
 
@@ -404,6 +415,7 @@ impl Local {
              GROUP BY game_id ORDER BY g.started_at"
         )))
         .bind(player)
+        .bind(since)
         .fetch_all(&self.pool)
         .await?
         .iter()
@@ -420,9 +432,11 @@ impl Local {
 
         let heat = sqlx::query(
             "SELECT d.segment, d.ring, COUNT(*) AS n FROM darts d JOIN turns t ON t.id = d.turn_id
-             WHERE t.player_id = ? GROUP BY d.segment, d.ring",
+               JOIN legs l ON l.id = t.leg_id JOIN games g ON g.id = l.game_id
+             WHERE t.player_id = ?1 AND (?2 IS NULL OR g.started_at >= ?2) GROUP BY d.segment, d.ring",
         )
         .bind(player)
+        .bind(since)
         .fetch_all(&self.pool)
         .await?
         .iter()
@@ -437,9 +451,10 @@ impl Local {
                     COALESCE(SUM(CASE WHEN d.segment BETWEEN 15 AND 20 OR d.segment = 25 THEN d.multiplier END), 0) AS marks
              FROM games g JOIN legs l ON l.game_id = g.id JOIN turns t ON t.leg_id = l.id AND t.player_id = ?1
              LEFT JOIN darts d ON d.turn_id = t.id
-             WHERE g.mode = 'cricket'",
+             WHERE g.mode = 'cricket' AND (?2 IS NULL OR g.started_at >= ?2)",
         )
         .bind(player)
+        .bind(since)
         .fetch_one(&self.pool)
         .await?;
         let atc = sqlx::query(
@@ -447,7 +462,7 @@ impl Local {
                SELECT l.id, l.game_id, l.winner_id,
                       (SELECT COUNT(*) FROM darts d JOIN turns t ON t.id = d.turn_id WHERE t.leg_id = l.id AND t.player_id = ?1) AS darts
                FROM legs l JOIN games g ON g.id = l.game_id
-               WHERE g.mode = 'atc' AND EXISTS (SELECT 1 FROM turns t WHERE t.leg_id = l.id AND t.player_id = ?1))
+               WHERE g.mode = 'atc' AND (?2 IS NULL OR g.started_at >= ?2) AND EXISTS (SELECT 1 FROM turns t WHERE t.leg_id = l.id AND t.player_id = ?1))
              SELECT COUNT(DISTINCT game_id) AS games, COUNT(*) AS legs,
                     COUNT(CASE WHEN winner_id = ?1 THEN 1 END) AS won,
                     COALESCE(SUM(darts), 0) AS darts,
@@ -455,6 +470,7 @@ impl Local {
              FROM legs_of",
         )
         .bind(player)
+        .bind(since)
         .fetch_one(&self.pool)
         .await?;
 
@@ -491,7 +507,7 @@ impl Local {
                 best_leg: atc.try_get("best")?,
             },
             training: self
-                .games_of(player, 500)
+                .games_of(player, since, 500)
                 .await?
                 .into_iter()
                 .filter(|g| matches!(g.mode.as_str(), "checkout" | "scoring" | "bobs27"))
@@ -715,7 +731,7 @@ mod tests {
         drill.mode = "bobs27".into();
         db.save_game(&drill).await.unwrap();
 
-        let st = db.stats(&a.id).await.unwrap();
+        let st = db.stats(&a.id, None).await.unwrap();
         // The drill's darts count for the heat map only.
         assert_eq!((st.games, st.legs_played, st.legs_won, st.best_leg), (1, 2, 2, Some(3)));
         assert_eq!((st.darts, st.scored, st.n140, st.n100), (7, 320, 2, 0));
@@ -727,7 +743,11 @@ mod tests {
         assert_eq!(t20.count, 6);
         assert_eq!(st.training.len(), 1);
         assert_eq!(st.cricket.games, 0);
-        assert_eq!(db.stats(&b.id).await.unwrap().darts, 0);
+        assert_eq!(db.stats(&b.id, None).await.unwrap().darts, 0);
+        let later = db.stats(&a.id, Some(Utc::now() + chrono::Duration::hours(1))).await.unwrap();
+        assert_eq!((later.darts, later.heat.len(), later.training.len()), (0, 0, 0));
+        let recent = db.stats(&a.id, Some(Utc::now() - chrono::Duration::hours(1))).await.unwrap();
+        assert_eq!((recent.darts, recent.training.len()), (7, 1));
     }
 
     #[tokio::test]
@@ -753,7 +773,7 @@ mod tests {
         atc.legs[1].winner_id = None;
         db.save_game(&atc).await.unwrap();
 
-        let st = db.stats(&a.id).await.unwrap();
+        let st = db.stats(&a.id, None).await.unwrap();
         assert_eq!(st.cricket, CricketTotals { games: 1, legs_played: 1, legs_won: 1, darts: 4, marks: 7 });
         assert_eq!(st.atc, AtcTotals { games: 1, legs_played: 2, legs_won: 1, darts: 6, best_leg: Some(3) });
         assert_eq!(st.games, 0);

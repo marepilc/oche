@@ -72,7 +72,8 @@ export interface PlayerStats {
   training: GameSummary[];
 }
 
-export const playerStats = (id: string) => invoke<PlayerStats>('player_stats', { id });
+/** Statistics of one player, from games started at or after `since` (ISO time; all games when null). */
+export const playerStats = (id: string, since: string | null = null) => invoke<PlayerStats>('player_stats', { id, since });
 
 export const remoteGet = () => invoke<{ config: RemoteConfig; hasPassword: boolean }>('remote_get');
 export const remoteTest = (config: RemoteConfig, password: string) =>
