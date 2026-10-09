@@ -3,6 +3,7 @@ import { replayCricket, type CricketSettings, type CricketState } from './core/c
 import type { Dart } from './core/dart';
 import { replayDrill, type DrillSettings, type DrillState } from './core/drills';
 import { atcRecord, cricketRecord, drillRecord, uuid7, x01Record, type GameRecord, type RecordMeta } from './core/record';
+import { eventsFromRecord } from './core/resume';
 import { replay, type GameEvent, type Player, type X01Settings, type X01State } from './core/x01';
 
 /** How a mode turns its event log into a state, and what that state says about the turn. */
@@ -21,17 +22,27 @@ interface Rules<S> {
  * A game being played: its event log and the state replayed from it.
  * Undo is "drop the last event", and the same log is what gets saved.
  */
+/** A stored game picked up again: it keeps its id, so saving overwrites it. */
+export interface Restore {
+  id: string;
+  startedAt: string;
+  events: GameEvent[];
+}
+
 export class Session<S> {
-  readonly id = uuid7();
-  readonly startedAt = new Date().toISOString();
+  readonly id: string;
+  readonly startedAt: string;
   events = $state<GameEvent[]>([]);
   state: S = $derived.by(() => this.rules.replay(this.events));
   record = $derived.by((): GameRecord => this.rules.record(this, this.state, this.events));
   over = $derived.by(() => this.rules.over(this.state));
   private rules: Rules<S>;
 
-  constructor(rules: Rules<S>) {
+  constructor(rules: Rules<S>, restore?: Restore) {
     this.rules = rules;
+    this.id = restore?.id ?? uuid7();
+    this.startedAt = restore?.startedAt ?? new Date().toISOString();
+    if (restore) this.events = restore.events;
   }
 
   /** Records a dart. Returns `false` when the turn is complete and must be confirmed first. */
@@ -64,8 +75,8 @@ export class Match extends Session<X01State> {
   readonly kind = 'x01';
   readonly settings: X01Settings;
   readonly players: Player[];
-  constructor(settings: X01Settings, players: Player[]) {
-    super(matchRules((e) => replay(settings, players, e), x01Record));
+  constructor(settings: X01Settings, players: Player[], restore?: Restore) {
+    super(matchRules((e) => replay(settings, players, e), x01Record), restore);
     this.settings = settings;
     this.players = players;
   }
@@ -75,8 +86,8 @@ export class CricketMatch extends Session<CricketState> {
   readonly kind = 'cricket';
   readonly settings: CricketSettings;
   readonly players: Player[];
-  constructor(settings: CricketSettings, players: Player[]) {
-    super(matchRules((e) => replayCricket(settings, players, e), cricketRecord));
+  constructor(settings: CricketSettings, players: Player[], restore?: Restore) {
+    super(matchRules((e) => replayCricket(settings, players, e), cricketRecord), restore);
     this.settings = settings;
     this.players = players;
   }
@@ -86,8 +97,8 @@ export class AtcMatch extends Session<AtcState> {
   readonly kind = 'atc';
   readonly settings: AtcSettings;
   readonly players: Player[];
-  constructor(settings: AtcSettings, players: Player[]) {
-    super(matchRules((e) => replayAtc(settings, players, e), atcRecord));
+  constructor(settings: AtcSettings, players: Player[], restore?: Restore) {
+    super(matchRules((e) => replayAtc(settings, players, e), atcRecord), restore);
     this.settings = settings;
     this.players = players;
   }
@@ -98,17 +109,35 @@ export class Drill extends Session<DrillState> {
   readonly kind = 'drill';
   readonly settings: DrillSettings;
   readonly player: Player;
-  constructor(settings: DrillSettings, player: Player) {
-    super({
-      replay: (e) => replayDrill(settings, e),
-      record: (meta, s, e) => drillRecord(meta, player, s, e),
-      over: (s) => s.done,
-      complete: (s) => s.complete,
-      inTurn: (s) => !!s.turn,
-    });
+  constructor(settings: DrillSettings, player: Player, restore?: Restore) {
+    super(
+      {
+        replay: (e) => replayDrill(settings, e),
+        record: (meta, s, e) => drillRecord(meta, player, s, e),
+        over: (s) => s.done,
+        complete: (s) => s.complete,
+        inTurn: (s) => !!s.turn,
+      },
+      restore,
+    );
     this.settings = settings;
     this.player = player;
   }
 }
 
 export type AnySession = Match | CricketMatch | AtcMatch | Drill;
+
+/** Picks a stored game up again where it was saved. */
+export function resume(game: GameRecord, players: Player[]): AnySession {
+  const restore: Restore = { id: game.id, startedAt: game.startedAt, events: eventsFromRecord(game) };
+  switch (game.mode) {
+    case 'x01':
+      return new Match(game.settings as X01Settings, players, restore);
+    case 'cricket':
+      return new CricketMatch(game.settings as CricketSettings, players, restore);
+    case 'atc':
+      return new AtcMatch(game.settings as AtcSettings, players, restore);
+    default:
+      return new Drill(game.settings as DrillSettings, players[0], restore);
+  }
+}

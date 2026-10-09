@@ -47,6 +47,7 @@ export const playerNamed = (name: string): Promise<Player> =>
 
 export const saveGame = (game: GameRecord) => (hasBackend ? invoke<void>('game_save', { game }) : Promise.resolve());
 export const deleteGame = (id: string) => (hasBackend ? invoke<void>('game_delete', { id }) : Promise.resolve());
+export const loadGame = (id: string) => invoke<{ game: GameRecord; players: Player[] }>('game_load', { id });
 export const games = (limit = 100) =>
   hasBackend ? invoke<GameSummary[]>('games_list', { limit }) : Promise.resolve([] as GameSummary[]);
 

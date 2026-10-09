@@ -29,6 +29,7 @@ pub fn run() {
             commands::player_named,
             commands::game_save,
             commands::game_delete,
+            commands::game_load,
             commands::games_list,
             commands::player_stats,
             commands::remote_get,

@@ -1,7 +1,10 @@
 <script lang="ts">
-  import { deleteGame, games as loadGames, hasBackend, type GameSummary } from '$lib/db.svelte';
+  import { deleteGame, games as loadGames, hasBackend, loadGame, type GameSummary } from '$lib/db.svelte';
+  import { resume as resumeSession, type AnySession } from '$lib/match.svelte';
   import { decimal, i18n, t } from '$lib/i18n/index.svelte';
   import type { MessageKey } from '$lib/i18n/types';
+
+  let { onresume }: { onresume: (s: AnySession) => void } = $props();
 
   let list = $state<GameSummary[]>([]);
   let loaded = $state(false);
@@ -59,6 +62,16 @@
     }
   }
 
+  async function resume(g: GameSummary) {
+    if (g.finishedAt) return;
+    try {
+      const { game, players } = await loadGame(g.id);
+      onresume(resumeSession(game, players));
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
   async function remove(g: GameSummary) {
     if (armed !== g.id) {
       armed = g.id;
@@ -74,6 +87,10 @@
     if (e.key === 'j' || e.key === 'ArrowDown') sel = Math.min(list.length - 1, sel + 1);
     else if (e.key === 'k' || e.key === 'ArrowUp') sel = Math.max(0, sel - 1);
     else if (e.key === 'Delete') return void remove(list[sel]);
+    else if (e.key === 'Enter' && !list[sel].finishedAt) {
+      e.preventDefault();
+      return void resume(list[sel]);
+    }
     else if (e.key === 'Escape') armed = null;
     else return;
     e.preventDefault();
@@ -103,6 +120,9 @@
           <span class="mode">{title(g)}</span>
           {#if !g.finishedAt}<span class="tag">{t('history.unfinished')}</span>{/if}
         </button>
+        {#if !g.finishedAt}
+          <button class="resume" tabindex="-1" onclick={() => resume(g)}>{t('history.resume')} <kbd>⏎</kbd></button>
+        {/if}
         <div class="players">
           {#each g.players as p (p.id)}
             <div class="p" class:win={g.winnerId === p.id && g.players.length > 1}>
@@ -121,7 +141,7 @@
   {#if list.length}
     <span class="hint">
       {#each t('history.keys').split(/(\{\w+\})/) as part, k (k)}
-        {#if part === '{jk}'}<kbd>j</kbd> <kbd>k</kbd>{:else if part === '{del}'}<kbd>Del</kbd>{:else}{part}{/if}
+        {#if part === '{jk}'}<kbd>j</kbd> <kbd>k</kbd>{:else if part === '{del}'}<kbd>Del</kbd>{:else if part === '{enter}'}<kbd>⏎</kbd>{:else}{part}{/if}
       {/each}
     </span>
   {/if}
@@ -131,7 +151,10 @@
   .wrap { max-width: 760px; margin-inline: auto; width: 100%; padding-block: 24px; display: grid; gap: 16px; overflow: auto; height: 100%; align-content: start; }
   h1 { margin: 0; font-family: var(--font-score); font-weight: 800; font-size: 44px; text-transform: uppercase; letter-spacing: 0.02em; }
   .games { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-  li { border: 1px solid var(--line); border-radius: var(--r); padding: 8px 12px; display: grid; gap: 4px; }
+  li { border: 1px solid var(--line); border-radius: var(--r); padding: 8px 12px; display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; }
+  li > :not(.resume) { grid-column: 1; }
+  .resume { grid-column: 2; grid-row: 1 / span 2; align-self: center; background: none; border: 1px solid var(--accent); color: var(--fg); border-radius: var(--r); padding: 4px 10px; cursor: pointer; font-size: 12px; }
+  .resume:hover { background: var(--bg-light); }
   li.sel { border-color: var(--accent); background: var(--bg-light); }
   .row { display: flex; gap: 12px; align-items: baseline; background: none; border: 0; padding: 0; text-align: left; cursor: pointer; }
   .when { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }

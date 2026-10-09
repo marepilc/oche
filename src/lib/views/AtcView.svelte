@@ -65,7 +65,7 @@
       <span class="label">{t('game.turn', { name: match.players[g.current].name })} · {t('atc.target')}</span>
       <span class="target">{atcLabel(at)}</span>
     </div>
-    <Slots {thrown} ghost={ghost?.darts} detail={(_, i) => ((g.turn ?? ghost)?.hit[i] ? t('atc.hit') : t('atc.noHit'))} />
+    <Slots {thrown} ghost={match.players.length === 1 ? ghost?.darts : null} detail={(_, i) => ((g.turn ?? ghost)?.hit[i] ? t('atc.hit') : t('atc.noHit'))} />
     {#if ghost}
       <div class="prev">
         {t('game.previous', { name: match.players[ghost.player].name })}

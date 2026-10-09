@@ -197,7 +197,8 @@ const pl: Messages = {
     bobs: '{score} pkt',
     delete: 'usuń',
     confirmDelete: 'Naciśnij Del jeszcze raz, żeby usunąć',
-    keys: '{jk} wybór · {del} usuń',
+    keys: '{jk} wybór · {enter} wznów niedokończoną grę · {del} usuń',
+    resume: 'Wznów',
   },
 
   stats: {

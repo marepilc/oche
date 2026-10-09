@@ -79,7 +79,7 @@
     {#if view === 'settings'}
       <Settings />
     {:else if view === 'history'}
-      <History />
+      <History onresume={(s) => play(s, 'history')} />
     {:else if view === 'stats'}
       <Stats />
     {:else if view === 'training'}

@@ -202,7 +202,8 @@ export default {
     bobs: '{score} pts',
     delete: 'delete',
     confirmDelete: 'Press Del again to delete',
-    keys: '{jk} move · {del} delete',
+    keys: '{jk} move · {enter} resume an unfinished game · {del} delete',
+    resume: 'Resume',
   },
 
   stats: {

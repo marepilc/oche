@@ -50,16 +50,30 @@
   const lit = (n: number, area: string) =>
     !!preview && preview.segment === n && (preview.rings as string[]).includes(area);
 
-  const markers = $derived(
-    darts.flatMap((d, k) => {
-      if (d.ring === 'miss') return [];
-      if (d.ring === 'bull') return [{ k, xy: pt(0, 0) }];
-      if (d.ring === 'obull') return [{ k, xy: pt((R.bull + R.obull) / 2, 30 + k * 120) }];
-      const i = BOARD_ORDER.indexOf(d.segment as (typeof BOARD_ORDER)[number]);
-      const area = AREAS.find(([a]) => a === (d.ring === 'single' ? 'outer' : d.ring))!;
-      return [{ k, xy: pt((area[1] + area[2]) / 2, centre(i) + (k - 1) * 5.5) }];
-    }),
-  );
+  /** Where a dart is drawn: the middle of its area; the outer bull at 12 o'clock, the bull in the centre. */
+  function spot(d: Dart): [number, number] | null {
+    if (d.ring === 'miss') return null;
+    if (d.ring === 'bull') return [0, 0];
+    if (d.ring === 'obull') return pt((R.bull + R.obull) / 2, -90);
+    const i = BOARD_ORDER.indexOf(d.segment as (typeof BOARD_ORDER)[number]);
+    // A single without its area is drawn in the outer single, the larger of the two.
+    const area = AREAS.find(([a]) => a === (d.ring === 'single' ? 'outer' : d.ring))!;
+    return pt((area[1] + area[2]) / 2, centre(i));
+  }
+
+  /** One marker per area hit; darts in the same area share it ("1·3"). */
+  const markers = $derived.by(() => {
+    const out: { key: string; xy: [number, number]; label: string }[] = [];
+    darts.forEach((d, k) => {
+      const xy = spot(d);
+      if (!xy) return;
+      const key = `${d.segment}:${d.ring === 'single' ? 'outer' : d.ring}`;
+      const m = out.find((o) => o.key === key);
+      if (m) m.label += `·${k + 1}`;
+      else out.push({ key, xy, label: String(k + 1) });
+    });
+    return out;
+  });
 </script>
 
 <svg class="board" class:dim={!!heat} viewBox="-240 -240 480 480" role="img" aria-label={t('game.board')}>
@@ -92,9 +106,10 @@
   {#each numbers as { n, xy } (n)}
     <text class="num" class:on={preview?.segment === n} x={xy[0]} y={xy[1]}>{n}</text>
   {/each}
-  {#each markers as m (m.k)}
-    <circle class="marker" cx={m.xy[0]} cy={m.xy[1]} r="7" />
-    <text class="marker-n" x={m.xy[0]} y={m.xy[1]}>{m.k + 1}</text>
+  {#each markers as m (m.key)}
+    {@const w = 14 + (m.label.length - 1) * 4.5}
+    <rect class="marker" x={m.xy[0] - w / 2} y={m.xy[1] - 7} width={w} height="14" rx="7" />
+    <text class="marker-n" x={m.xy[0]} y={m.xy[1]}>{m.label}</text>
   {/each}
 </svg>
 

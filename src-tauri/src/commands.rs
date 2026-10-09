@@ -48,6 +48,24 @@ pub async fn game_delete(db: Db<'_>, id: String) -> Res<()> {
     Ok(())
 }
 
+#[derive(Serialize)]
+pub struct LoadedGame {
+    game: GameRecord,
+    /// The game's players in seat order.
+    players: Vec<Player>,
+}
+
+/// A stored game with its players, for resuming it.
+#[tauri::command]
+pub async fn game_load(db: Db<'_>, id: String) -> Res<LoadedGame> {
+    let game = db.local.load_game(&id).await.map_err(err)?.ok_or("no such game")?;
+    let mut players = Vec::with_capacity(game.players.len());
+    for pid in &game.players {
+        players.push(db.local.player(pid).await.map_err(err)?.ok_or("a player of this game is missing")?);
+    }
+    Ok(LoadedGame { game, players })
+}
+
 #[tauri::command]
 pub async fn games_list(db: Db<'_>, limit: Option<i64>) -> Res<Vec<GameSummary>> {
     db.local.games(limit.unwrap_or(100)).await.map_err(err)

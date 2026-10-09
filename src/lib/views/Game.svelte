@@ -88,7 +88,7 @@
       <span class="label">{t('game.turn', { name: match.players[g.current].name })}</span>
       <span class="sum" class:bust={g.turn?.bust}>{turnSum}</span>
     </div>
-    <Slots {thrown} ghost={ghost?.darts} />
+    <Slots {thrown} ghost={match.players.length === 1 ? ghost?.darts : null} />
     {#if ghost}
       <div class="prev">
         {t('game.previous', { name: match.players[ghost.player].name })}
