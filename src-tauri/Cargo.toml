@@ -25,7 +25,7 @@ serde_json = "1"
 toml = "1.1.7"
 notify = "8.2.0"
 dirs = "7.0.0"
-sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls", "sqlite", "postgres", "migrate", "chrono", "uuid", "macros"] }
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls", "sqlite", "postgres", "mysql", "migrate", "chrono", "uuid", "macros"] }
 tokio = { version = "1", features = ["sync", "time", "macros"] }
 uuid = { version = "1.27", features = ["v7", "serde"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }

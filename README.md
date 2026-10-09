@@ -15,8 +15,9 @@ npm install
 npm run tauri dev      # tryb deweloperski
 npm test               # testy logiki gry
 cd src-tauri && cargo test   # testy bazy (SQLite w pamięci)
-# testy zdalnej bazy: pusta baza `oche` i baza `other` z dowolną tabelą
-OCHE_TEST_PG=postgres://oche:haslo@localhost:5432 cargo test remote -- --ignored
+# testy zdalnych baz: na każdym serwerze pusta baza `oche` i baza `other` z dowolną tabelą
+OCHE_TEST_PG=postgres://oche:haslo@localhost:5432 \
+OCHE_TEST_MYSQL=mysql://oche:haslo@localhost:3306 cargo test remote -- --ignored
 packaging/install-local.sh   # build release + instalacja do ~/.local (widoczne w Walkerze)
 ```
 

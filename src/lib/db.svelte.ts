@@ -20,6 +20,7 @@ export interface GameSummary {
 
 export interface RemoteConfig {
   enabled: boolean;
+  kind: 'postgres' | 'mysql';
   host: string;
   port: number;
   database: string;

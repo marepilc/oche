@@ -13,7 +13,7 @@
   import { i18n, locales, setLocale, t } from '$lib/i18n/index.svelte';
   import { theme } from '$lib/theme.svelte';
 
-  let cfg = $state<RemoteConfig>({ enabled: false, host: 'localhost', port: 5432, database: 'oche', user: 'oche', ssl: 'prefer' });
+  let cfg = $state<RemoteConfig>({ enabled: false, kind: 'postgres', host: 'localhost', port: 5432, database: 'oche', user: 'oche', ssl: 'prefer' });
   let password = $state('');
   let hasPassword = $state(false);
   let busy = $state(false);
@@ -28,6 +28,13 @@
       .catch(() => {});
   }
   if (hasBackend) load();
+
+  const PORTS = { postgres: 5432, mysql: 3306 };
+  function setKind(kind: RemoteConfig['kind']) {
+    // Follow the engine's default port unless a custom one was typed.
+    if (cfg.port === PORTS[cfg.kind]) cfg.port = PORTS[kind];
+    cfg.kind = kind;
+  }
 
   function describe(c: RemoteContents): { text: string; bad: boolean } {
     if (c.kind === 'empty') return { text: t('settings.empty'), bad: false };
@@ -108,6 +115,11 @@
       {#if cfg.enabled}
         <div>{t('settings.active', { user: cfg.user, host: cfg.host, database: cfg.database })}</div>
       {/if}
+      <div class="seg" role="radiogroup" aria-label={t('settings.engine')}>
+        {#each [['postgres', 'PostgreSQL'], ['mysql', 'MySQL / MariaDB']] as const as [k, name] (k)}
+          <label><input type="radio" name="kind" checked={cfg.kind === k} onchange={() => setKind(k)} /> {name}</label>
+        {/each}
+      </div>
       <div class="form">
         <label class="wide">{t('settings.host')}<input bind:value={cfg.host} spellcheck="false" /></label>
         <label>{t('settings.port')}<input type="number" min="1" max="65535" bind:value={cfg.port} /></label>

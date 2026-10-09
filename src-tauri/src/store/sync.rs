@@ -4,12 +4,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use serde::Serialize;
-use sqlx::PgPool;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::{Mutex, Notify};
 
 use super::local::{Local, OutboxItem};
-use super::remote::{self, RemoteConfig};
+use super::remote::{self, Remote, RemoteConfig};
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(tag = "state", rename_all = "camelCase")]
@@ -27,7 +26,7 @@ pub enum SyncStatus {
 pub struct Sync {
     pub local: Arc<Local>,
     pub config: Mutex<RemoteConfig>,
-    pool: Mutex<Option<PgPool>>,
+    pool: Mutex<Option<Remote>>,
     status: std::sync::Mutex<SyncStatus>,
     wake: Notify,
 }
@@ -57,7 +56,7 @@ impl Sync {
     }
 
     /// Switches to a new remote database (or none), using an already prepared pool.
-    pub async fn switch(&self, config: RemoteConfig, pool: Option<PgPool>) {
+    pub async fn switch(&self, config: RemoteConfig, pool: Option<Remote>) {
         self.local.set_tracking(config.enabled);
         *self.config.lock().await = config;
         if let Some(old) = std::mem::replace(&mut *self.pool.lock().await, pool) {
@@ -74,35 +73,35 @@ impl Sync {
         }
     }
 
-    async fn pool(&self, config: &RemoteConfig) -> Result<PgPool, String> {
+    async fn pool(&self, config: &RemoteConfig) -> Result<Remote, String> {
         let mut slot = self.pool.lock().await;
         if let Some(pool) = slot.as_ref() {
             return Ok(pool.clone());
         }
         let password = remote::stored_password(config);
-        let pool = remote::connect(config, password.as_deref()).await?;
-        remote::prepare(&pool).await?;
+        let pool = Remote::connect(config, password.as_deref()).await?;
+        pool.prepare().await?;
         *slot = Some(pool.clone());
         Ok(pool)
     }
 
-    async fn push(&self, pool: &PgPool, item: &OutboxItem) -> Result<(), String> {
+    async fn push(&self, pool: &Remote, item: &OutboxItem) -> Result<(), String> {
         let local = &self.local;
         let err = |e: sqlx::Error| e.to_string();
         match (item.entity.as_str(), item.op.as_str()) {
             ("player", _) => {
                 if let Some(p) = local.player(&item.entity_id).await.map_err(err)? {
-                    remote::push_player(pool, &p).await.map_err(err)?;
+                    pool.push_player(&p).await.map_err(err)?;
                 }
             }
-            ("game", "delete") => remote::delete_game(pool, &item.entity_id).await.map_err(err)?,
+            ("game", "delete") => pool.delete_game(&item.entity_id).await.map_err(err)?,
             ("game", _) => {
                 if let Some(g) = local.load_game(&item.entity_id).await.map_err(err)? {
                     let mut players = Vec::new();
                     for id in &g.players {
                         players.extend(local.player(id).await.map_err(err)?);
                     }
-                    remote::push_game(pool, &g, &players).await.map_err(err)?;
+                    pool.push_game(&g, &players).await.map_err(err)?;
                 }
             }
             _ => {}

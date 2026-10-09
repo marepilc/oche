@@ -6,7 +6,7 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::store::local::Imported;
-use crate::store::remote::{self, Contents, RemoteConfig};
+use crate::store::remote::{self, Contents, Remote, RemoteConfig};
 use crate::store::sync::{Sync, SyncStatus};
 use crate::store::{GameRecord, GameSummary, Player, PlayerStats};
 
@@ -79,8 +79,8 @@ fn password_for(config: &RemoteConfig, typed: Option<String>) -> Option<String> 
 /// Connects and reports what the database holds, without changing anything.
 #[tauri::command]
 pub async fn remote_test(config: RemoteConfig, password: Option<String>) -> Res<Contents> {
-    let pool = remote::connect(&config, password_for(&config, password).as_deref()).await?;
-    let contents = remote::inspect(&pool).await;
+    let pool = Remote::connect(&config, password_for(&config, password).as_deref()).await?;
+    let contents = pool.inspect().await;
     pool.close().await;
     contents
 }
@@ -89,8 +89,8 @@ pub async fn remote_test(config: RemoteConfig, password: Option<String>) -> Res<
 #[tauri::command]
 pub async fn remote_connect(db: Db<'_>, mut config: RemoteConfig, password: Option<String>) -> Res<Contents> {
     let typed = password.filter(|p| !p.is_empty());
-    let pool = remote::connect(&config, password_for(&config, typed.clone()).as_deref()).await?;
-    let contents = match remote::prepare(&pool).await {
+    let pool = Remote::connect(&config, password_for(&config, typed.clone()).as_deref()).await?;
+    let contents = match pool.prepare().await {
         Ok(c) => c,
         Err(e) => {
             pool.close().await;
@@ -104,7 +104,7 @@ pub async fn remote_connect(db: Db<'_>, mut config: RemoteConfig, password: Opti
     remote::save_config(&config)?;
     // An existing Oche database may hold games from another computer: take them first.
     if matches!(contents, Contents::Oche { .. }) {
-        let (players, games) = remote::fetch_all(&pool).await.map_err(err)?;
+        let (players, games) = pool.fetch_all().await.map_err(err)?;
         db.local.import(&players, &games).await.map_err(err)?;
     }
     db.local.enqueue_all().await.map_err(err)?;
@@ -119,8 +119,8 @@ pub async fn remote_import(db: Db<'_>) -> Res<Imported> {
     if !config.enabled {
         return Err("no remote database".into());
     }
-    let pool = remote::connect(&config, remote::stored_password(&config).as_deref()).await?;
-    let fetched = remote::fetch_all(&pool).await.map_err(err);
+    let pool = Remote::connect(&config, remote::stored_password(&config).as_deref()).await?;
+    let fetched = pool.fetch_all().await.map_err(err);
     pool.close().await;
     let (players, games) = fetched?;
     db.local.import(&players, &games).await.map_err(err)
