@@ -9,7 +9,7 @@ license=('MIT')
 depends=('webkit2gtk-4.1' 'gtk3' 'fontconfig' 'hicolor-icon-theme')
 makedepends=('cargo' 'nodejs' 'npm')
 optdepends=('gnome-keyring: remember the remote database password (any Secret Service provider works)')
-options=('!lto')
+options=('!lto' '!debug')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 # Run `updpkgsums` after tagging a release.
 sha256sums=('SKIP')
