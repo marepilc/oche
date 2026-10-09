@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Oche
+GenericName=Darts scorer
+Comment=Liczenie wyników w darta i śledzenie postępów
+Exec=oche
+Icon=oche
+Terminal=false
+Categories=Game;SportsGame;
+Keywords=dart;darts;501;cricket;
+StartupWMClass=oche

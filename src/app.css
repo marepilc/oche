@@ -1,0 +1,63 @@
+/* Fallback palette (Omarchy "Silo"). At runtime theme.svelte.ts overrides these
+   with the active Omarchy theme from colors.toml. */
+:root {
+  --bg: #20221f;
+  --bg-dark: #181a17;
+  --bg-darker: #121410;
+  --bg-light: #292d27;
+  --fg: #c8c9b8;
+  --muted: #666a60;
+  --accent: #87925a;
+  --red: #c24a3f;
+  --green: #5f875f;
+  --warn: #c9a554;
+
+  --line: color-mix(in oklab, var(--fg) 12%, transparent);
+  --board-a: color-mix(in oklab, var(--bg-darker) 85%, var(--fg));
+  --board-b: color-mix(in oklab, var(--fg) 70%, var(--bg));
+
+  --font-ui: 'JetBrainsMono Nerd Font', 'JetBrains Mono', ui-monospace, monospace;
+  --font-score: 'Big Shoulders Display', 'Arial Narrow', sans-serif;
+  --r: 6px;
+  color-scheme: dark;
+}
+:root[data-mode='light'] {
+  --board-a: color-mix(in oklab, var(--fg) 90%, var(--bg));
+  --board-b: color-mix(in oklab, var(--bg) 70%, #e9dcc0);
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px/1.5 var(--font-ui);
+  overflow: hidden;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+button, input, select { font: inherit; color: inherit; }
+input { user-select: text; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+kbd {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  padding: 0 5px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--fg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
