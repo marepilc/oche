@@ -5,6 +5,7 @@ use std::sync::Arc;
 use serde::Serialize;
 use tauri::State;
 
+use crate::store::local::Imported;
 use crate::store::remote::{self, Contents, RemoteConfig};
 use crate::store::sync::{Sync, SyncStatus};
 use crate::store::{GameRecord, GameSummary, Player};
@@ -96,9 +97,28 @@ pub async fn remote_connect(db: Db<'_>, mut config: RemoteConfig, password: Opti
     }
     config.enabled = true;
     remote::save_config(&config)?;
+    // An existing Oche database may hold games from another computer: take them first.
+    if matches!(contents, Contents::Oche { .. }) {
+        let (players, games) = remote::fetch_all(&pool).await.map_err(err)?;
+        db.local.import(&players, &games).await.map_err(err)?;
+    }
     db.local.enqueue_all().await.map_err(err)?;
     db.switch(config, Some(pool)).await;
     Ok(contents)
+}
+
+/// Copies players and games that exist only on the remote database.
+#[tauri::command]
+pub async fn remote_import(db: Db<'_>) -> Res<Imported> {
+    let config = db.config.lock().await.clone();
+    if !config.enabled {
+        return Err("no remote database".into());
+    }
+    let pool = remote::connect(&config, remote::stored_password(&config).as_deref()).await?;
+    let fetched = remote::fetch_all(&pool).await.map_err(err);
+    pool.close().await;
+    let (players, games) = fetched?;
+    db.local.import(&players, &games).await.map_err(err)
 }
 
 /// Stops pushing to the remote database. Data already there stays.

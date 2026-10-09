@@ -4,6 +4,7 @@
     remoteConnect,
     remoteDisconnect,
     remoteGet,
+    remoteImport,
     remoteTest,
     sync,
     type RemoteConfig,
@@ -54,6 +55,11 @@
       password = '';
       load();
       return { text: t('settings.connected'), bad: false };
+    });
+  const pull = () =>
+    run(async () => {
+      const r = await remoteImport();
+      return { text: t('settings.imported', { games: t('settings.nGames', { count: r.games }), players: t('settings.nPlayers', { count: r.players }) }), bad: false };
     });
   const disconnect = () =>
     run(async () => {
@@ -122,6 +128,7 @@
         <button class="btn ghost" disabled={busy} onclick={test}>{t('settings.test')}</button>
         <button class="btn" disabled={busy} onclick={connect}>{t(cfg.enabled ? 'settings.reconnect' : 'settings.connect')}</button>
         {#if cfg.enabled}
+          <button class="btn ghost" disabled={busy} onclick={pull}>{t('settings.import')}</button>
           <button class="btn ghost" disabled={busy} onclick={disconnect}>{t('settings.disconnect')}</button>
         {/if}
       </div>

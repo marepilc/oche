@@ -3,7 +3,7 @@
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use chrono::Utc;
+use chrono::{SubsecRound, Utc};
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::{Row, Sqlite, SqlitePool, Transaction};
 
@@ -13,6 +13,12 @@ pub struct Local {
     pub pool: SqlitePool,
     /// Whether changes are queued for the remote database.
     tracking: AtomicBool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize)]
+pub struct Imported {
+    pub players: usize,
+    pub games: usize,
 }
 
 /// A queued change; `id` is the newest outbox row for the entity.
@@ -98,7 +104,7 @@ impl Local {
         if let Some(row) = found {
             return player_row(&row);
         }
-        let player = Player { id: new_id(), name: name.to_owned(), created_at: Utc::now(), archived_at: None };
+        let player = Player { id: new_id(), name: name.to_owned(), created_at: Utc::now().trunc_subsecs(6), archived_at: None };
         let mut tx = self.pool.begin().await?;
         sqlx::query("INSERT INTO players (id, name, created_at) VALUES (?, ?, ?)")
             .bind(&player.id)
@@ -113,6 +119,10 @@ impl Local {
 
     /// Stores the game, replacing whatever was stored under its id.
     pub async fn save_game(&self, g: &GameRecord) -> Result<(), sqlx::Error> {
+        self.write_game(g, true).await
+    }
+
+    async fn write_game(&self, g: &GameRecord, track: bool) -> Result<(), sqlx::Error> {
         let mut tx = self.pool.begin().await?;
         sqlx::query(
             "INSERT INTO games (id, mode, settings_json, started_at, finished_at, winner_id) VALUES (?, ?, ?, ?, ?, ?)
@@ -184,8 +194,39 @@ impl Local {
                 }
             }
         }
-        self.enqueue(&mut tx, "game", &g.id, "upsert").await?;
+        if track {
+            self.enqueue(&mut tx, "game", &g.id, "upsert").await?;
+        }
         tx.commit().await
+    }
+
+    /// Adds players and games from the remote database that are not here yet.
+    /// Local data wins: games already stored locally are left alone. Nothing is queued for pushing.
+    pub async fn import(&self, players: &[Player], games: &[GameRecord]) -> Result<Imported, sqlx::Error> {
+        let mut done = Imported::default();
+        for p in players {
+            let added = sqlx::query(
+                "INSERT INTO players (id, name, created_at, archived_at) VALUES (?, ?, ?, ?) ON CONFLICT (id) DO NOTHING",
+            )
+            .bind(&p.id)
+            .bind(&p.name)
+            .bind(p.created_at)
+            .bind(p.archived_at)
+            .execute(&self.pool)
+            .await?;
+            done.players += added.rows_affected() as usize;
+        }
+        for g in games {
+            let exists: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM games WHERE id = ?)")
+                .bind(&g.id)
+                .fetch_one(&self.pool)
+                .await?;
+            if !exists {
+                self.write_game(g, false).await?;
+                done.games += 1;
+            }
+        }
+        Ok(done)
     }
 
     pub async fn delete_game(&self, id: &str) -> Result<(), sqlx::Error> {
@@ -491,5 +532,21 @@ mod tests {
 
         db.delete_game(&g.id).await.unwrap();
         assert_eq!(db.pending().await.unwrap().last().unwrap().op, "delete");
+    }
+
+    #[tokio::test]
+    async fn import_adds_only_what_is_missing_and_queues_nothing() {
+        let here = Local::memory().await.unwrap();
+        let there = Local::memory().await.unwrap();
+        let a = there.player_named("Ala").await.unwrap();
+        let g = game(&[&a], 1);
+        there.save_game(&g).await.unwrap();
+
+        here.set_tracking(true);
+        let first = here.import(&[a.clone()], &[g.clone()]).await.unwrap();
+        assert_eq!(first, Imported { players: 1, games: 1 });
+        assert_eq!(here.load_game(&g.id).await.unwrap().unwrap().legs, g.legs);
+        assert_eq!(here.pending_count().await.unwrap(), 0);
+        assert_eq!(here.import(&[a], &[g]).await.unwrap(), Imported::default());
     }
 }

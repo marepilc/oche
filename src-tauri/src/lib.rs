@@ -34,6 +34,7 @@ pub fn run() {
             commands::remote_test,
             commands::remote_connect,
             commands::remote_disconnect,
+            commands::remote_import,
             commands::sync_status,
             commands::sync_now,
         ])

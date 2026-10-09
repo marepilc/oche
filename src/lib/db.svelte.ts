@@ -55,6 +55,7 @@ export const remoteTest = (config: RemoteConfig, password: string) =>
 export const remoteConnect = (config: RemoteConfig, password: string) =>
   invoke<RemoteContents>('remote_connect', { config, password });
 export const remoteDisconnect = () => invoke<void>('remote_disconnect');
+export const remoteImport = () => invoke<{ players: number; games: number }>('remote_import');
 export const syncNow = () => (hasBackend ? invoke<void>('sync_now') : Promise.resolve());
 
 export const sync = $state<{ status: SyncStatus }>({ status: { state: 'off' } });

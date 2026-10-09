@@ -12,7 +12,7 @@ use sqlx::postgres::{PgConnectOptions, PgPoolOptions, PgSslMode};
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
-use super::{GameRecord, Player};
+use super::{DartRecord, GameRecord, LegRecord, Player, TurnRecord};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
@@ -279,6 +279,83 @@ pub async fn delete_game(pool: &PgPool, id: &str) -> Result<(), sqlx::Error> {
     Ok(())
 }
 
+/// Everything stored remotely, for importing on another computer.
+pub async fn fetch_all(pool: &PgPool) -> Result<(Vec<Player>, Vec<GameRecord>), sqlx::Error> {
+    use std::collections::HashMap;
+    use sqlx::Row;
+
+    let s = |u: Uuid| u.to_string();
+    let so = |u: Option<Uuid>| u.map(|u| u.to_string());
+
+    let players = sqlx::query("SELECT id, name, created_at, archived_at FROM players ORDER BY created_at")
+        .fetch_all(pool)
+        .await?
+        .iter()
+        .map(|r| {
+            Ok(Player {
+                id: s(r.try_get("id")?),
+                name: r.try_get("name")?,
+                created_at: r.try_get("created_at")?,
+                archived_at: r.try_get("archived_at")?,
+            })
+        })
+        .collect::<Result<Vec<_>, sqlx::Error>>()?;
+
+    let mut darts: HashMap<Uuid, Vec<DartRecord>> = HashMap::new();
+    for r in sqlx::query("SELECT turn_id, segment, ring, points FROM darts ORDER BY turn_id, dart_no").fetch_all(pool).await? {
+        darts.entry(r.try_get("turn_id")?).or_default().push(DartRecord {
+            segment: r.try_get("segment")?,
+            ring: r.try_get("ring")?,
+            points: r.try_get("points")?,
+        });
+    }
+    let mut turns: HashMap<Uuid, Vec<TurnRecord>> = HashMap::new();
+    for r in sqlx::query("SELECT * FROM turns ORDER BY leg_id, turn_no").fetch_all(pool).await? {
+        let id: Uuid = r.try_get("id")?;
+        turns.entry(r.try_get("leg_id")?).or_default().push(TurnRecord {
+            player_id: s(r.try_get("player_id")?),
+            turn_no: r.try_get("turn_no")?,
+            target: r.try_get("target")?,
+            score_before: r.try_get("score_before")?,
+            scored: r.try_get("scored")?,
+            bust: r.try_get("bust")?,
+            checkout: r.try_get("checkout")?,
+            darts: darts.remove(&id).unwrap_or_default(),
+        });
+    }
+    let mut legs: HashMap<Uuid, Vec<LegRecord>> = HashMap::new();
+    for r in sqlx::query("SELECT * FROM legs ORDER BY game_id, set_no, leg_no").fetch_all(pool).await? {
+        let id: Uuid = r.try_get("id")?;
+        legs.entry(r.try_get("game_id")?).or_default().push(LegRecord {
+            set_no: r.try_get("set_no")?,
+            leg_no: r.try_get("leg_no")?,
+            starter_id: so(r.try_get("starter_id")?),
+            winner_id: so(r.try_get("winner_id")?),
+            turns: turns.remove(&id).unwrap_or_default(),
+        });
+    }
+    let mut seats: HashMap<Uuid, Vec<String>> = HashMap::new();
+    for r in sqlx::query("SELECT game_id, player_id FROM game_players ORDER BY game_id, seat").fetch_all(pool).await? {
+        seats.entry(r.try_get("game_id")?).or_default().push(s(r.try_get("player_id")?));
+    }
+    let mut games = Vec::new();
+    for r in sqlx::query("SELECT * FROM games ORDER BY started_at").fetch_all(pool).await? {
+        let id: Uuid = r.try_get("id")?;
+        let settings: sqlx::types::Json<serde_json::Value> = r.try_get("settings_json")?;
+        games.push(GameRecord {
+            id: s(id),
+            mode: r.try_get("mode")?,
+            settings: settings.0,
+            started_at: r.try_get("started_at")?,
+            finished_at: r.try_get("finished_at")?,
+            winner_id: so(r.try_get("winner_id")?),
+            players: seats.remove(&id).unwrap_or_default(),
+            legs: legs.remove(&id).unwrap_or_default(),
+        });
+    }
+    Ok((players, games))
+}
+
 /// Runs against a real server when `OCHE_TEST_PG` is set, e.g.
 /// `OCHE_TEST_PG=postgres://oche:secret@localhost:5432 cargo test remote -- --ignored`.
 /// It needs an empty database `oche` and a database `other` holding an unrelated table.
@@ -286,7 +363,6 @@ pub async fn delete_game(pool: &PgPool, id: &str) -> Result<(), sqlx::Error> {
 mod tests {
     use super::*;
     use crate::store::local::Local;
-    use crate::store::{DartRecord, LegRecord, TurnRecord};
     use chrono::Utc;
 
     fn config(database: &str) -> Option<(RemoteConfig, String)> {
@@ -356,6 +432,11 @@ mod tests {
         assert_eq!(darts, 2);
         let finished: bool = sqlx::query_scalar("SELECT finished_at IS NOT NULL FROM games").fetch_one(&pool).await.unwrap();
         assert!(finished);
+
+        let (players, games) = fetch_all(&pool).await.unwrap();
+        assert_eq!(players, vec![p.clone()]);
+        assert_eq!(games.len(), 1);
+        assert_eq!((&games[0].id, &games[0].players, &games[0].legs), (&g.id, &g.players, &g.legs));
 
         delete_game(&pool, &g.id).await.unwrap();
         let turns: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM turns").fetch_one(&pool).await.unwrap();
