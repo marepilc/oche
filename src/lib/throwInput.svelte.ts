@@ -1,5 +1,6 @@
 import type { Dart } from './core/dart';
 import { emptyInput, press, type InputError } from './core/input';
+import { t } from './i18n/index.svelte';
 import type { MessageKey } from './i18n/types';
 
 /** Anything darts can be thrown into: a match or a training drill. */
@@ -56,6 +57,31 @@ export class ThrowInput {
         this.showError(ERRORS[action.error.code], 'value' in action.error ? { value: action.error.value } : undefined);
         break;
     }
+  }
+
+  /** The hint next to the prompt: what can be typed now. */
+  hint(thrown: number, complete: boolean, bust = false): string {
+    if (complete) return t(bust ? 'game.confirmBust' : 'game.confirmTurn');
+    const buf = this.input.buf;
+    if (!buf) return t('input.dartOf', { n: thrown + 1 }) + (thrown ? `   ·   ${t('input.confirmHint')}` : '');
+    if (buf === '1') return `${t('input.single')}   ·   ${t('input.grow1')}`;
+    if (buf === '2') return `${t('input.single')}   ·   ${t('input.grow2')}`;
+    return t('input.single');
+  }
+
+  /** Window keydown for a game screen: once the game is over, ⏎ leaves and ⌫ undoes. */
+  gameKey(e: KeyboardEvent, over: boolean, ondone: () => void) {
+    if (over && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        ondone();
+      } else if (e.key === 'Backspace') {
+        e.preventDefault();
+        this.#target().undo();
+      }
+      return;
+    }
+    this.key(e);
   }
 
   /** A dart picked by clicking the board. */

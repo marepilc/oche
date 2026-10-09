@@ -66,6 +66,8 @@ export interface PlayerStats {
   bestCheckout: number;
   timeline: { gameId: string; startedAt: string; average: number; first9: number }[];
   heat: { segment: number; ring: string; count: number }[];
+  cricket: { games: number; legsPlayed: number; legsWon: number; darts: number; marks: number };
+  atc: { games: number; legsPlayed: number; legsWon: number; darts: number; bestLeg: number | null };
   training: GameSummary[];
 }
 

@@ -160,6 +160,29 @@
       </div>
     </section>
 
+    {#if stats.cricket.games || stats.atc.games}
+      <div class="split">
+        {#if stats.cricket.games}
+          <section>
+            <div class="label">{t('newGame.cricket')} · {t('stats.games', { count: stats.cricket.games })}</div>
+            <div class="tiles">
+              <div class="tile"><span class="label">{t('stats.mpr')}</span><b>{decimal(stats.cricket.darts ? (stats.cricket.marks / stats.cricket.darts) * 3 : 0)}</b></div>
+              <div class="tile"><span class="label">{t('stats.legs')}</span><b>{stats.cricket.legsWon} / {stats.cricket.legsPlayed}</b></div>
+            </div>
+          </section>
+        {/if}
+        {#if stats.atc.games}
+          <section>
+            <div class="label">{t('newGame.atc')} · {t('stats.games', { count: stats.atc.games })}</div>
+            <div class="tiles">
+              <div class="tile"><span class="label">{t('stats.bestLeg')}</span><b>{stats.atc.bestLeg ? t('stats.darts', { count: stats.atc.bestLeg }) : '—'}</b></div>
+              <div class="tile"><span class="label">{t('stats.legs')}</span><b>{stats.atc.legsWon} / {stats.atc.legsPlayed}</b></div>
+            </div>
+          </section>
+        {/if}
+      </div>
+    {/if}
+
     <section>
       <div class="label">{t('stats.trend')}</div>
       {#if trend.length}

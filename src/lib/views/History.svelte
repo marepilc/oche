@@ -28,6 +28,10 @@
     switch (g.mode) {
       case 'x01':
         return g.players.length === 1 ? `${s.start} solo` : `${s.start}${s.doubleIn ? ' · DI' : ''}${s.doubleOut ? ' · DO' : ''}`;
+      case 'cricket':
+        return `${t('newGame.cricket')}${s.cutThroat ? ` · ${t('newGame.cutThroat')}` : ''}`;
+      case 'atc':
+        return t('newGame.atc');
       case 'checkout':
         return `${t('training.checkout')} ${s.min}–${s.max}`;
       case 'scoring':
@@ -42,6 +46,10 @@
     switch (g.mode) {
       case 'x01':
         return `${t('history.legs', { won: p.legsWon })} · ${t('history.avg', { avg: decimal(avg) })}`;
+      case 'cricket':
+        return `${t('history.legs', { won: p.legsWon })} · ${t('history.total', { total: p.scored })}`;
+      case 'atc':
+        return `${t('history.legs', { won: p.legsWon })} · ${t('stats.darts', { count: p.darts })}`;
       case 'checkout':
         return t('history.finishes', { won: p.legsWon, legs: g.legs });
       case 'scoring':

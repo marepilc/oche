@@ -7,7 +7,7 @@ use chrono::{SubsecRound, Utc};
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::{Row, Sqlite, SqlitePool, Transaction};
 
-use super::{new_id, GamePoint, GameRecord, GameSummary, HeatCell, LegRecord, Player, PlayerResult, PlayerStats, TurnRecord};
+use super::{new_id, AtcTotals, CricketTotals, GamePoint, GameRecord, GameSummary, HeatCell, LegRecord, Player, PlayerResult, PlayerStats, TurnRecord};
 
 pub struct Local {
     pub pool: SqlitePool,
@@ -429,6 +429,35 @@ impl Local {
         .map(|r| Ok(HeatCell { segment: r.try_get("segment")?, ring: r.try_get("ring")?, count: r.try_get("n")? }))
         .collect::<Result<_, sqlx::Error>>()?;
 
+        let cricket = sqlx::query(
+            "SELECT COUNT(DISTINCT g.id) AS games,
+                    COUNT(DISTINCT l.id) AS legs,
+                    COUNT(DISTINCT CASE WHEN l.winner_id = ?1 THEN l.id END) AS won,
+                    COUNT(d.id) AS darts,
+                    COALESCE(SUM(CASE WHEN d.segment BETWEEN 15 AND 20 OR d.segment = 25 THEN d.multiplier END), 0) AS marks
+             FROM games g JOIN legs l ON l.game_id = g.id JOIN turns t ON t.leg_id = l.id AND t.player_id = ?1
+             LEFT JOIN darts d ON d.turn_id = t.id
+             WHERE g.mode = 'cricket'",
+        )
+        .bind(player)
+        .fetch_one(&self.pool)
+        .await?;
+        let atc = sqlx::query(
+            "WITH legs_of AS (
+               SELECT l.id, l.game_id, l.winner_id,
+                      (SELECT COUNT(*) FROM darts d JOIN turns t ON t.id = d.turn_id WHERE t.leg_id = l.id AND t.player_id = ?1) AS darts
+               FROM legs l JOIN games g ON g.id = l.game_id
+               WHERE g.mode = 'atc' AND EXISTS (SELECT 1 FROM turns t WHERE t.leg_id = l.id AND t.player_id = ?1))
+             SELECT COUNT(DISTINCT game_id) AS games, COUNT(*) AS legs,
+                    COUNT(CASE WHEN winner_id = ?1 THEN 1 END) AS won,
+                    COALESCE(SUM(darts), 0) AS darts,
+                    MIN(CASE WHEN winner_id = ?1 THEN darts END) AS best
+             FROM legs_of",
+        )
+        .bind(player)
+        .fetch_one(&self.pool)
+        .await?;
+
         let i = |k: &str| totals.try_get::<i64, _>(k);
         Ok(PlayerStats {
             games: i("games")?,
@@ -447,7 +476,26 @@ impl Local {
             best_checkout: i("best_checkout")?,
             timeline,
             heat,
-            training: self.games_of(player, 500).await?.into_iter().filter(|g| g.mode != "x01").collect(),
+            cricket: CricketTotals {
+                games: cricket.try_get("games")?,
+                legs_played: cricket.try_get("legs")?,
+                legs_won: cricket.try_get("won")?,
+                darts: cricket.try_get("darts")?,
+                marks: cricket.try_get("marks")?,
+            },
+            atc: AtcTotals {
+                games: atc.try_get("games")?,
+                legs_played: atc.try_get("legs")?,
+                legs_won: atc.try_get("won")?,
+                darts: atc.try_get("darts")?,
+                best_leg: atc.try_get("best")?,
+            },
+            training: self
+                .games_of(player, 500)
+                .await?
+                .into_iter()
+                .filter(|g| matches!(g.mode.as_str(), "checkout" | "scoring" | "bobs27"))
+                .collect(),
         })
     }
 
@@ -544,7 +592,7 @@ fn player_row(r: &sqlx::sqlite::SqliteRow) -> Result<Player, sqlx::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::store::DartRecord;
+    use crate::store::{AtcTotals, CricketTotals, DartRecord};
 
     fn dart(segment: i32, ring: &str, points: i32) -> DartRecord {
         DartRecord { segment, ring: ring.into(), points }
@@ -678,7 +726,38 @@ mod tests {
         let t20 = st.heat.iter().find(|h| h.segment == 20 && h.ring == "triple").unwrap();
         assert_eq!(t20.count, 6);
         assert_eq!(st.training.len(), 1);
+        assert_eq!(st.cricket.games, 0);
         assert_eq!(db.stats(&b.id).await.unwrap().darts, 0);
+    }
+
+    #[tokio::test]
+    async fn stats_for_cricket_and_around_the_clock() {
+        let db = Local::memory().await.unwrap();
+        let a = db.player_named("Ala").await.unwrap();
+        let mut cricket = game(&[&a], 1);
+        cricket.mode = "cricket".into();
+        // T20 T20 20↑: 7 marks; plus a miss on 1 in a second turn.
+        cricket.legs[0].turns.push(TurnRecord {
+            player_id: a.id.clone(),
+            turn_no: 2,
+            target: None,
+            score_before: 0,
+            scored: 0,
+            bust: false,
+            checkout: false,
+            darts: vec![dart(1, "outer", 1)],
+        });
+        db.save_game(&cricket).await.unwrap();
+        let mut atc = game(&[&a], 2);
+        atc.mode = "atc".into();
+        atc.legs[1].winner_id = None;
+        db.save_game(&atc).await.unwrap();
+
+        let st = db.stats(&a.id).await.unwrap();
+        assert_eq!(st.cricket, CricketTotals { games: 1, legs_played: 1, legs_won: 1, darts: 4, marks: 7 });
+        assert_eq!(st.atc, AtcTotals { games: 1, legs_played: 2, legs_won: 1, darts: 6, best_leg: Some(3) });
+        assert_eq!(st.games, 0);
+        assert!(st.training.is_empty());
     }
 
     #[tokio::test]

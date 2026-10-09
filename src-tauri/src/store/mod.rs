@@ -124,7 +124,31 @@ pub struct PlayerStats {
     pub timeline: Vec<GamePoint>,
     /// Darts by board area, in every mode.
     pub heat: Vec<HeatCell>,
+    pub cricket: CricketTotals,
+    pub atc: AtcTotals,
     pub training: Vec<GameSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CricketTotals {
+    pub games: i64,
+    pub legs_played: i64,
+    pub legs_won: i64,
+    pub darts: i64,
+    /// Marks on 15–20 and the bull, extra marks included.
+    pub marks: i64,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AtcTotals {
+    pub games: i64,
+    pub legs_played: i64,
+    pub legs_won: i64,
+    pub darts: i64,
+    /// Fewest darts in a won leg.
+    pub best_leg: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]

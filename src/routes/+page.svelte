@@ -2,7 +2,9 @@
   import Help from '$lib/Help.svelte';
   import { i18n, t } from '$lib/i18n/index.svelte';
   import { followSync, sync } from '$lib/db.svelte';
-  import { Drill, Match } from '$lib/match.svelte';
+  import { AtcMatch, CricketMatch, Drill, Match, type AnySession } from '$lib/match.svelte';
+  import AtcView from '$lib/views/AtcView.svelte';
+  import CricketView from '$lib/views/CricketView.svelte';
   import { followOmarchyTheme, theme } from '$lib/theme.svelte';
   import DrillView from '$lib/views/DrillView.svelte';
   import Game from '$lib/views/Game.svelte';
@@ -16,10 +18,10 @@
 
   let view = $state<View>('new');
   /** The match or drill being played, and the view it was started from. */
-  let session = $state<{ play: Match | Drill; from: View } | null>(null);
+  let session = $state<{ play: AnySession; from: View } | null>(null);
   let help = $state(false);
 
-  function play(p: Match | Drill, from: View) {
+  function play(p: AnySession, from: View) {
     session = { play: p, from };
     view = 'game';
   }
@@ -86,12 +88,22 @@
       {#key session.play}
         {#if session.play instanceof Match}
           <Game match={session.play} ondone={done} />
+        {:else if session.play instanceof CricketMatch}
+          <CricketView match={session.play} ondone={done} />
+        {:else if session.play instanceof AtcMatch}
+          <AtcView match={session.play} ondone={done} />
         {:else}
           <DrillView drill={session.play} ondone={done} />
         {/if}
       {/key}
     {:else}
-      <NewGame onstart={(settings, players) => play(new Match(settings, players), 'new')} />
+      <NewGame
+        onstart={(c, players) =>
+          play(
+            c.mode === 'cricket' ? new CricketMatch(c.settings, players) : c.mode === 'atc' ? new AtcMatch(c.settings, players) : new Match(c.settings, players),
+            'new',
+          )}
+      />
     {/if}
   </main>
 </div>

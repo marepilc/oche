@@ -1,3 +1,5 @@
+import { atcLabel, type AtcSettings, type AtcState } from './atc';
+import type { CricketSettings, CricketState } from './cricket';
 import type { Dart } from './dart';
 import type { DrillSettings, DrillState } from './drills';
 import type { GameEvent, Player, X01Settings, X01State } from './x01';
@@ -5,8 +7,8 @@ import type { GameEvent, Player, X01Settings, X01State } from './x01';
 /** A game as it is stored. Mirrors `GameRecord` in src-tauri/src/store/mod.rs. */
 export interface GameRecord {
   id: string;
-  mode: 'x01' | DrillSettings['kind'];
-  settings: X01Settings | DrillSettings;
+  mode: 'x01' | 'cricket' | 'atc' | DrillSettings['kind'];
+  settings: X01Settings | CricketSettings | AtcSettings | DrillSettings;
   startedAt: string;
   finishedAt: string | null;
   winnerId: string | null;
@@ -49,8 +51,25 @@ export function lastConfirmAt(events: GameEvent[]): string | null {
 
 const dartsOnly = (darts: Dart[]) => darts.map(({ segment, ring, points }) => ({ segment, ring, points }));
 
-/** Confirmed turns only: the turn being thrown is saved once it is confirmed. */
-export function x01Record(meta: RecordMeta, s: X01State, events: GameEvent[]): GameRecord {
+interface MatchLike<T extends { player: number }> {
+  players: Player[];
+  legs: { starter: number; winner: number | null; turns: T[] }[];
+  turn: T | null;
+  winner: number | null;
+}
+
+/**
+ * A multi-player game as a record. Confirmed turns only: the turn being thrown
+ * is saved once it is confirmed.
+ */
+function matchRecord<T extends { player: number; darts: Dart[] }>(
+  meta: RecordMeta,
+  mode: GameRecord['mode'],
+  settings: GameRecord['settings'],
+  s: MatchLike<T>,
+  events: GameEvent[],
+  turn: (t: T) => Pick<TurnRecord, 'target' | 'scoreBefore' | 'scored' | 'bust' | 'checkout'>,
+): GameRecord {
   const id = (i: number | null) => (i === null ? null : s.players[i].id);
   const legs = s.legs
     .map((leg, k) => ({
@@ -60,22 +79,13 @@ export function x01Record(meta: RecordMeta, s: X01State, events: GameEvent[]): G
       winnerId: id(leg.winner),
       turns: leg.turns
         .filter((t) => t !== s.turn)
-        .map((t, n) => ({
-          playerId: s.players[t.player].id,
-          turnNo: n + 1,
-          target: null,
-          scoreBefore: t.scoreBefore,
-          scored: t.scored,
-          bust: t.bust,
-          checkout: t.checkout,
-          darts: dartsOnly(t.darts),
-        })),
+        .map((t, n) => ({ playerId: s.players[t.player].id, turnNo: n + 1, ...turn(t), darts: dartsOnly(t.darts) })),
     }))
     .filter((leg) => leg.turns.length);
   return {
     id: meta.id,
-    mode: 'x01',
-    settings: s.settings,
+    mode,
+    settings,
     startedAt: meta.startedAt,
     finishedAt: s.winner === null ? null : lastConfirmAt(events),
     winnerId: id(s.winner),
@@ -83,6 +93,33 @@ export function x01Record(meta: RecordMeta, s: X01State, events: GameEvent[]): G
     legs,
   };
 }
+
+export const x01Record = (meta: RecordMeta, s: X01State, events: GameEvent[]) =>
+  matchRecord(meta, 'x01', s.settings, s, events, (t) => ({
+    target: null,
+    scoreBefore: t.scoreBefore,
+    scored: t.scored,
+    bust: t.bust,
+    checkout: t.checkout,
+  }));
+
+export const cricketRecord = (meta: RecordMeta, s: CricketState, events: GameEvent[]) =>
+  matchRecord(meta, 'cricket', s.settings, s, events, (t) => ({
+    target: null,
+    scoreBefore: t.pointsBefore,
+    scored: t.scored,
+    bust: false,
+    checkout: t.checkout,
+  }));
+
+export const atcRecord = (meta: RecordMeta, s: AtcState, events: GameEvent[]) =>
+  matchRecord(meta, 'atc', s.settings, s, events, (t) => ({
+    target: atcLabel(t.before),
+    scoreBefore: t.before,
+    scored: t.advanced,
+    bust: false,
+    checkout: t.checkout,
+  }));
 
 export function drillRecord(meta: RecordMeta, player: Player, s: DrillState, events: GameEvent[]): GameRecord {
   const legs = s.attempts

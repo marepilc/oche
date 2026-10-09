@@ -1,10 +1,21 @@
+<script lang="ts" module>
+  import type { AtcSettings } from '$lib/core/atc';
+  import type { CricketSettings } from '$lib/core/cricket';
+  import type { X01Settings } from '$lib/core/x01';
+
+  export type NewGameChoice =
+    | { mode: 'x01'; settings: X01Settings }
+    | { mode: 'cricket'; settings: CricketSettings }
+    | { mode: 'atc'; settings: AtcSettings };
+</script>
+
 <script lang="ts">
-  import type { Player, X01Settings } from '$lib/core/x01';
+  import type { Player } from '$lib/core/x01';
   import { playerNamed, players as storedPlayers } from '$lib/db.svelte';
   import { t } from '$lib/i18n/index.svelte';
 
   interface Props {
-    onstart: (settings: X01Settings, players: Player[]) => void;
+    onstart: (choice: NewGameChoice, players: Player[]) => void;
   }
   let { onstart }: Props = $props();
 
@@ -12,7 +23,13 @@
   const KEY = 'oche:new-game';
   const saved = (() => {
     try {
-      return JSON.parse(localStorage.getItem(KEY) ?? 'null') as { settings: X01Settings; players: Player[] } | null;
+      return JSON.parse(localStorage.getItem(KEY) ?? 'null') as {
+        mode?: NewGameChoice['mode'];
+        settings: X01Settings;
+        cricket?: { cutThroat: boolean };
+        atc?: { skips: boolean };
+        players: Player[];
+      } | null;
     } catch {
       return null;
     }
@@ -20,6 +37,9 @@
 
   let settings = $state<X01Settings>(saved?.settings ?? { start: 501, doubleIn: false, doubleOut: true, legsToWin: 2 });
   let players = $state<Player[]>(saved?.players ?? []);
+  let mode = $state<NewGameChoice['mode']>(saved?.mode ?? 'x01');
+  let cricket = $state(saved?.cricket ?? { cutThroat: false });
+  let atc = $state(saved?.atc ?? { skips: false });
   let name = $state('');
   let nameInput: HTMLInputElement;
   let known = $state<Player[]>([]);
@@ -63,11 +83,18 @@
       starting = false;
     }
     try {
-      localStorage.setItem(KEY, JSON.stringify({ settings, players }));
+      localStorage.setItem(KEY, JSON.stringify({ mode, settings, cricket, atc, players }));
     } catch {
       /* not critical */
     }
-    onstart($state.snapshot(settings), $state.snapshot(players));
+    const legsToWin = settings.legsToWin;
+    const choice: NewGameChoice =
+      mode === 'cricket'
+        ? { mode, settings: { legsToWin, cutThroat: cricket.cutThroat } }
+        : mode === 'atc'
+          ? { mode, settings: { legsToWin, skips: atc.skips } }
+          : { mode, settings: $state.snapshot(settings) };
+    onstart(choice, $state.snapshot(players));
   }
 
   function onNameKey(e: KeyboardEvent) {
@@ -124,15 +151,30 @@
 
   <section>
     <div class="label">{t('newGame.mode')}</div>
-    <div class="seg" role="radiogroup" aria-label={t('newGame.startScore')}>
-      {#each [301, 501, 701] as v (v)}
-        <label><input type="radio" name="start" value={v} bind:group={settings.start} /> {v}</label>
+    <div class="seg" role="radiogroup" aria-label={t('newGame.mode')}>
+      {#each ['x01', 'cricket', 'atc'] as const as m (m)}
+        <label><input type="radio" name="mode" value={m} bind:group={mode} /> {t(`newGame.${m}`)}</label>
       {/each}
     </div>
-    <div class="seg">
-      <label><input type="checkbox" bind:checked={settings.doubleIn} /> {t('newGame.doubleIn')}</label>
-      <label><input type="checkbox" bind:checked={settings.doubleOut} /> {t('newGame.doubleOut')}</label>
-    </div>
+    {#if mode === 'x01'}
+      <div class="seg" role="radiogroup" aria-label={t('newGame.startScore')}>
+        {#each [301, 501, 701] as v (v)}
+          <label><input type="radio" name="start" value={v} bind:group={settings.start} /> {v}</label>
+        {/each}
+      </div>
+      <div class="seg">
+        <label><input type="checkbox" bind:checked={settings.doubleIn} /> {t('newGame.doubleIn')}</label>
+        <label><input type="checkbox" bind:checked={settings.doubleOut} /> {t('newGame.doubleOut')}</label>
+      </div>
+    {:else if mode === 'cricket'}
+      <div class="seg">
+        <label><input type="checkbox" bind:checked={cricket.cutThroat} /> {t('newGame.cutThroat')}</label>
+      </div>
+    {:else}
+      <div class="seg">
+        <label><input type="checkbox" bind:checked={atc.skips} /> {t('newGame.skips')}</label>
+      </div>
+    {/if}
   </section>
 
   <section>

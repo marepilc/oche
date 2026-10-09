@@ -61,3 +61,11 @@ kbd {
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* Shared bits of the game screens. */
+.chip { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--bg-dark); color: var(--muted); font-variant-numeric: tabular-nums; }
+.chip.hi { color: var(--fg); }
+.chip.bust { color: var(--red); }
+.confirm { padding: 8px 12px; border-radius: var(--r); border: 1px solid var(--accent); color: var(--accent); font-size: 12px; }
+.confirm.bust { border-color: var(--red); color: var(--red); }
+.prev { font-size: 11px; color: var(--muted); }
