@@ -24,7 +24,6 @@ prepare() {
 build() {
   cd "$pkgname-$pkgver"
   export RUSTUP_TOOLCHAIN=stable
-  export CARGO_TARGET_DIR=src-tauri/target
   npx tauri build --no-bundle -- --frozen
 }
 
