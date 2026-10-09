@@ -1,7 +1,13 @@
 {
   "name": "oche",
   "version": "0.1.0",
-  "description": "",
+  "description": "Keyboard-first darts scorer and practice tracker",
+  "author": "Marek Pilczuk",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/marepilc/oche.git"
+  },
+  "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite dev",

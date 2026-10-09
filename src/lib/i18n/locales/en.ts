@@ -50,6 +50,7 @@ export default {
     doubleOut: 'double out',
     singleOut: 'single out',
     players: 'Players',
+    board: 'Dartboard',
     legs: 'legs {n}',
     avg: 'avg',
     darts: 'darts',

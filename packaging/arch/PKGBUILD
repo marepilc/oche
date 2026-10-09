@@ -1,0 +1,46 @@
+# Maintainer: Marek Pilczuk <marek@mp76.pl>
+pkgname=oche
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Keyboard-first darts scorer and practice tracker, made for Omarchy'
+arch=('x86_64')
+url='https://github.com/marepilc/oche'
+license=('MIT')
+depends=('webkit2gtk-4.1' 'gtk3' 'fontconfig' 'hicolor-icon-theme')
+makedepends=('cargo' 'nodejs' 'npm')
+optdepends=('gnome-keyring: remember the remote database password (any Secret Service provider works)')
+options=('!lto')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+# Run `updpkgsums` after tagging a release.
+sha256sums=('SKIP')
+
+prepare() {
+  cd "$pkgname-$pkgver"
+  npm ci --no-audit --no-fund
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')" --manifest-path src-tauri/Cargo.toml
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=src-tauri/target
+  npx tauri build --no-bundle -- --frozen
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  npx vitest run
+  export RUSTUP_TOOLCHAIN=stable
+  cargo test --frozen --manifest-path src-tauri/Cargo.toml
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  install -Dm755 src-tauri/target/release/oche "$pkgdir/usr/bin/oche"
+  install -Dm644 packaging/oche.desktop "$pkgdir/usr/share/applications/oche.desktop"
+  install -Dm644 packaging/icon.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/oche.svg"
+  install -Dm644 src-tauri/icons/128x128.png "$pkgdir/usr/share/icons/hicolor/128x128/apps/oche.png"
+  install -Dm644 src-tauri/icons/32x32.png "$pkgdir/usr/share/icons/hicolor/32x32/apps/oche.png"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

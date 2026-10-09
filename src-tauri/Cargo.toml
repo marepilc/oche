@@ -1,10 +1,12 @@
 [package]
 name = "oche"
 version = "0.1.0"
-description = "Liczenie wyników w darta i śledzenie postępów"
+description = "Keyboard-first darts scorer and practice tracker"
 authors = ["Marek Pilczuk"]
 edition = "2021"
 license = "MIT"
+repository = "https://github.com/marepilc/oche"
+homepage = "https://github.com/marepilc/oche"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

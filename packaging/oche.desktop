@@ -2,7 +2,9 @@
 Type=Application
 Name=Oche
 GenericName=Darts scorer
-Comment=Liczenie wyników w darta i śledzenie postępów
+Comment=Keyboard-first darts scorer and practice tracker
+Comment[pl]=Liczenie wyników w darta i śledzenie postępów
+GenericName[pl]=Liczenie wyników w darta
 Exec=oche
 Icon=oche
 Terminal=false

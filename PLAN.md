@@ -29,7 +29,7 @@ przełącza prosty stan w `+page.svelte`, bez routingu po URL-ach.
 - **Okno:** `decorations: false`, klasa okna `oche` (dla reguł Hyprland), sensowny minimalny rozmiar,
   układ działający zarówno w kafelku 50% jak i na pełnym ekranie.
 - **Uruchamianie:** plik `.desktop` + ikona → aplikacja widoczna w Walkerze (Super+Space).
-- **Dystrybucja:** `PKGBUILD` (AUR `oche-bin` z wydania GitHub) — Omarchy stoi na Archu.
+- **Dystrybucja:** `PKGBUILD` budujący ze źródeł (AUR `oche`, z tagu na GitHubie) — Omarchy stoi na Archu.
 - **WebKitGTK:** na NVIDIA ustawiamy domyślnie `WEBKIT_DISABLE_DMABUF_RENDERER=1`, jeśli wykryjemy problem z renderowaniem.
 - Ścieżki XDG: config `~/.config/oche/config.toml`, dane `~/.local/share/oche/oche.db`.
 
@@ -115,7 +115,7 @@ Statystyki liczone zapytaniami SQL (widoki `v_turn_stats`, `v_dart_heatmap`) —
 ## 6. Przechowywanie: lokalnie + opcjonalna zdalna baza
 
 - **Źródłem prawdy jest zawsze lokalny SQLite.** Gra działa offline i nigdy nie czeka na sieć.
-- W ustawieniach można dodać **PostgreSQL** (MySQL/MariaDB później): host, port, baza, użytkownik, SSL.
+- W ustawieniach można dodać **PostgreSQL lub MySQL/MariaDB**: host, port, baza, użytkownik, SSL.
   Hasło trafia do keyringa (Secret Service / gnome-keyring), nie do `config.toml`.
 - Przycisk „Testuj połączenie” → tworzy schemat (migracje `sqlx` osobno dla każdego dialektu) na **pustej** bazie;
   jeśli baza ma już schemat Oche, sprawdza wersję.
@@ -150,11 +150,12 @@ oche/
 4. ✅ **Zapis lokalny** — SQLite, migracje, gracze, historia gier.
 5. ✅ **Statystyki** (`Ctrl+S`) — średnia i first 9, checkout % (tury zaczęte na zamknięciu do 170),
    180/140+/100+, najlepszy leg i zamknięcie, średnia w kolejnych grach, mapa cieplna, wyniki treningów.
-   Do zrobienia: porównanie graczy, zakresy dat.
+   ✅ Porównanie graczy, zakresy dat (30/90/365 dni).
 6. ✅ **Zdalna baza** — PostgreSQL: ustawienia, keyring, migracje, outbox i synchronizacja.
-   Import ze zdalnej bazy (automatycznie przy podłączeniu istniejącej bazy Oche i przyciskiem). Do zrobienia: MySQL/MariaDB.
-7. **Więcej trybów** — ✅ trening (X01 solo, Checkout, Scoring, Bob's 27); Cricket, Around the Clock.
-8. **Wydanie** — PKGBUILD/AUR, wydania na GitHubie.
+   Import ze zdalnej bazy (automatycznie przy podłączeniu istniejącej bazy Oche i przyciskiem). ✅ MySQL/MariaDB.
+7. ✅ **Więcej trybów** — trening (X01 solo, Checkout, Scoring, Bob's 27), Cricket (także cut-throat), Around the Clock.
+8. ✅ **Wydanie** — `packaging/arch/PKGBUILD` (+ `build-local.sh`), CI i workflow wydań na GitHubie (.deb/.rpm/AppImage).
+   Do zrobienia przy pierwszym wydaniu: tag `v0.1.0`, `updpkgsums`, publikacja w AUR.
 
 ## 9. Wymagania do budowania
 

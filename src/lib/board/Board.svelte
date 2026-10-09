@@ -1,6 +1,7 @@
 <script lang="ts">
   import { BOARD_ORDER, dart, type Dart } from '$lib/core/dart';
   import type { Preview } from '$lib/core/input';
+  import { t } from '$lib/i18n/index.svelte';
 
   type Area = 'inner' | 'triple' | 'outer' | 'double';
 
@@ -61,7 +62,7 @@
   );
 </script>
 
-<svg class="board" class:dim={!!heat} viewBox="-240 -240 480 480" role="img" aria-label="Tarcza do darta">
+<svg class="board" class:dim={!!heat} viewBox="-240 -240 480 480" role="img" aria-label={t('game.board')}>
   <circle r="236" fill="var(--bg-darker)" />
   {#each regions as r (r.n + r.area)}
     <path

@@ -45,6 +45,7 @@ const pl: Messages = {
     doubleOut: 'double out',
     singleOut: 'single out',
     players: 'Gracze',
+    board: 'Tarcza do darta',
     legs: 'legi {n}',
     avg: 'śr.',
     darts: 'lotki',
