@@ -8,7 +8,7 @@ use tauri::State;
 use crate::store::local::Imported;
 use crate::store::remote::{self, Contents, RemoteConfig};
 use crate::store::sync::{Sync, SyncStatus};
-use crate::store::{GameRecord, GameSummary, Player};
+use crate::store::{GameRecord, GameSummary, Player, PlayerStats};
 
 type Db<'a> = State<'a, Arc<Sync>>;
 type Res<T> = Result<T, String>;
@@ -50,6 +50,11 @@ pub async fn game_delete(db: Db<'_>, id: String) -> Res<()> {
 #[tauri::command]
 pub async fn games_list(db: Db<'_>, limit: Option<i64>) -> Res<Vec<GameSummary>> {
     db.local.games(limit.unwrap_or(100)).await.map_err(err)
+}
+
+#[tauri::command]
+pub async fn player_stats(db: Db<'_>, id: String) -> Res<PlayerStats> {
+    db.local.stats(&id).await.map_err(err)
 }
 
 #[derive(Serialize)]

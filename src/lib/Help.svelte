@@ -20,6 +20,7 @@
     [['Ctrl', 'G'], 'help.game'],
     [['Ctrl', 'T'], 'help.training'],
     [['Ctrl', 'H'], 'help.history'],
+    [['Ctrl', 'S'], 'help.stats'],
     [['Ctrl', ','], 'help.settings'],
   ];
   const [before, after] = $derived(t('help.click').split('{esc}'));

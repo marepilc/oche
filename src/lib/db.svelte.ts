@@ -49,6 +49,28 @@ export const deleteGame = (id: string) => (hasBackend ? invoke<void>('game_delet
 export const games = (limit = 100) =>
   hasBackend ? invoke<GameSummary[]>('games_list', { limit }) : Promise.resolve([] as GameSummary[]);
 
+export interface PlayerStats {
+  games: number;
+  legsPlayed: number;
+  legsWon: number;
+  bestLeg: number | null;
+  darts: number;
+  scored: number;
+  first9Darts: number;
+  first9Scored: number;
+  n180: number;
+  n140: number;
+  n100: number;
+  checkouts: number;
+  checkoutChances: number;
+  bestCheckout: number;
+  timeline: { gameId: string; startedAt: string; average: number; first9: number }[];
+  heat: { segment: number; ring: string; count: number }[];
+  training: GameSummary[];
+}
+
+export const playerStats = (id: string) => invoke<PlayerStats>('player_stats', { id });
+
 export const remoteGet = () => invoke<{ config: RemoteConfig; hasPassword: boolean }>('remote_get');
 export const remoteTest = (config: RemoteConfig, password: string) =>
   invoke<RemoteContents>('remote_test', { config, password });

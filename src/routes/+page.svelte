@@ -9,9 +9,10 @@
   import History from '$lib/views/History.svelte';
   import NewGame from '$lib/views/NewGame.svelte';
   import Settings from '$lib/views/Settings.svelte';
+  import Stats from '$lib/views/Stats.svelte';
   import Training from '$lib/views/Training.svelte';
 
-  type View = 'new' | 'training' | 'game' | 'history' | 'settings';
+  type View = 'new' | 'training' | 'game' | 'history' | 'stats' | 'settings';
 
   let view = $state<View>('new');
   /** The match or drill being played, and the view it was started from. */
@@ -43,6 +44,7 @@
       else if (key === 't') { e.preventDefault(); view = 'training'; }
       else if (key === 'g' && session) { e.preventDefault(); view = 'game'; }
       else if (key === 'h') { e.preventDefault(); view = 'history'; }
+      else if (key === 's') { e.preventDefault(); view = 'stats'; }
       else if (key === ',') { e.preventDefault(); view = 'settings'; }
       return;
     }
@@ -61,6 +63,7 @@
       <button class="tab" aria-current={view === 'training'} onclick={() => (view = 'training')}>{t('nav.training')}<kbd>^T</kbd></button>
       <button class="tab" aria-current={view === 'game'} disabled={!session} onclick={() => (view = 'game')}>{t('nav.game')}<kbd>^G</kbd></button>
       <button class="tab" aria-current={view === 'history'} onclick={() => (view = 'history')}>{t('nav.history')}<kbd>^H</kbd></button>
+      <button class="tab" aria-current={view === 'stats'} onclick={() => (view = 'stats')}>{t('nav.stats')}<kbd>^S</kbd></button>
       <button class="tab" aria-current={view === 'settings'} onclick={() => (view = 'settings')}>{t('nav.settings')}<kbd>^,</kbd></button>
     </nav>
     <div class="spacer" data-tauri-drag-region></div>
@@ -75,6 +78,8 @@
       <Settings />
     {:else if view === 'history'}
       <History />
+    {:else if view === 'stats'}
+      <Stats />
     {:else if view === 'training'}
       <Training onx01={(settings, player) => play(new Match(settings, [player]), 'training')} ondrill={(settings, player) => play(new Drill(settings, player), 'training')} />
     {:else if view === 'game' && session}
@@ -102,6 +107,12 @@
   .tab { background: none; border: 0; padding: 3px 10px; border-radius: var(--r); color: var(--muted); cursor: pointer; }
   .tab:disabled { opacity: 0.4; cursor: default; }
   .tab kbd { font-size: 10px; margin-left: 6px; opacity: 0.7; }
+  .tab { white-space: nowrap; }
+  .status { white-space: nowrap; }
+  @media (max-width: 1000px) {
+    .tab kbd { display: none; }
+    .top { gap: 12px; }
+  }
   .tab[aria-current='true'] { color: var(--fg); background: var(--bg-light); }
   .spacer { flex: 1; align-self: stretch; }
   .status { font-size: 11px; color: var(--muted); }

@@ -101,6 +101,49 @@ pub struct PlayerResult {
     pub turns: i64,
 }
 
+/// Statistics of one player. X01 totals cover every X01 game; `training` lists drill sessions.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerStats {
+    pub games: i64,
+    pub legs_played: i64,
+    pub legs_won: i64,
+    /// Fewest darts in a won leg.
+    pub best_leg: Option<i64>,
+    pub darts: i64,
+    pub scored: i64,
+    pub first9_darts: i64,
+    pub first9_scored: i64,
+    pub n180: i64,
+    pub n140: i64,
+    pub n100: i64,
+    pub checkouts: i64,
+    /// Visits that started on a three-dart finish with double out.
+    pub checkout_chances: i64,
+    pub best_checkout: i64,
+    pub timeline: Vec<GamePoint>,
+    /// Darts by board area, in every mode.
+    pub heat: Vec<HeatCell>,
+    pub training: Vec<GameSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct GamePoint {
+    pub game_id: String,
+    pub started_at: DateTime<Utc>,
+    pub average: f64,
+    pub first9: f64,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct HeatCell {
+    pub segment: i32,
+    pub ring: String,
+    pub count: i64,
+}
+
 pub fn new_id() -> String {
     uuid::Uuid::now_v7().to_string()
 }

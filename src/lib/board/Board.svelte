@@ -9,8 +9,10 @@
     /** Darts of the current turn, drawn as numbered markers. */
     darts?: Dart[];
     onpick?: (d: Dart) => void;
+    /** Heat map: share of darts (0–1, relative to the busiest area) keyed `segment:area`, e.g. `20:triple`, `25:bull`. */
+    heat?: Map<string, { value: number; label: string }> | null;
   }
-  let { preview = null, darts = [], onpick }: Props = $props();
+  let { preview = null, darts = [], onpick, heat = null }: Props = $props();
 
   // Regulation radii in mm, scaled so the double ring ends at 200.
   const K = 200 / 170;
@@ -59,7 +61,7 @@
   );
 </script>
 
-<svg class="board" viewBox="-240 -240 480 480" role="img" aria-label="Tarcza do darta">
+<svg class="board" class:dim={!!heat} viewBox="-240 -240 480 480" role="img" aria-label="Tarcza do darta">
   <circle r="236" fill="var(--bg-darker)" />
   {#each regions as r (r.n + r.area)}
     <path
@@ -73,6 +75,16 @@
   {/each}
   <circle class="reg" class:lit={lit(25, 'obull')} r={R.obull} fill="var(--green)" role="presentation" onclick={() => onpick?.(dart(25, 'obull'))} />
   <circle class="reg" class:lit={lit(25, 'bull')} r={R.bull} fill="var(--red)" role="presentation" onclick={() => onpick?.(dart(25, 'bull'))} />
+  {#if heat}
+    {#each regions as r (r.n + r.area)}
+      {@const h = heat.get(`${r.n}:${r.area}`)}
+      <path class="heat" d={r.d} fill-opacity={h ? 0.15 + h.value * 0.8 : 0}><title>{h?.label ?? ''}</title></path>
+    {/each}
+    {@const ob = heat.get('25:obull')}
+    {@const b = heat.get('25:bull')}
+    <circle class="heat" r={R.obull} fill-opacity={ob ? 0.15 + ob.value * 0.8 : 0}><title>{ob?.label ?? ''}</title></circle>
+    <circle class="heat" r={R.bull} fill-opacity={b ? 0.15 + b.value * 0.8 : 0}><title>{b?.label ?? ''}</title></circle>
+  {/if}
   {#each [R.tIn, R.tOut, R.dIn, R.dOut] as r (r)}
     <circle class="wire" {r} />
   {/each}
@@ -90,6 +102,8 @@
   .reg { stroke: var(--bg-darker); stroke-width: 0.8; cursor: pointer; transition: fill-opacity 0.12s; }
   .reg:hover { fill-opacity: 0.8; }
   .reg.lit { fill: var(--accent); fill-opacity: 0.6; }
+  .board.dim .reg { opacity: 0.25; }
+  .heat { fill: var(--accent); stroke: var(--bg-darker); stroke-width: 0.8; }
   .wire { fill: none; stroke: color-mix(in oklab, var(--fg) 30%, transparent); stroke-width: 0.6; pointer-events: none; }
   .num { fill: var(--muted); font: 600 15px var(--font-ui); text-anchor: middle; dominant-baseline: central; }
   .num.on { fill: var(--accent); }

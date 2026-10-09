@@ -30,6 +30,7 @@ pub fn run() {
             commands::game_save,
             commands::game_delete,
             commands::games_list,
+            commands::player_stats,
             commands::remote_get,
             commands::remote_test,
             commands::remote_connect,

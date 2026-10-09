@@ -7,7 +7,7 @@ use chrono::{SubsecRound, Utc};
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::{Row, Sqlite, SqlitePool, Transaction};
 
-use super::{new_id, GameRecord, GameSummary, LegRecord, Player, PlayerResult, TurnRecord};
+use super::{new_id, GamePoint, GameRecord, GameSummary, HeatCell, LegRecord, Player, PlayerResult, PlayerStats, TurnRecord};
 
 pub struct Local {
     pub pool: SqlitePool,
@@ -306,26 +306,27 @@ impl Local {
 
     /// The most recent games, newest first, with per-player totals.
     pub async fn games(&self, limit: i64) -> Result<Vec<GameSummary>, sqlx::Error> {
-        let rows = sqlx::query(
-            "SELECT g.id, g.mode, g.settings_json, g.started_at, g.finished_at, g.winner_id,
-               (SELECT COUNT(*) FROM legs l WHERE l.game_id = g.id) AS legs,
-               p.id AS player_id, p.name,
-               (SELECT COUNT(*) FROM legs l WHERE l.game_id = g.id AND l.winner_id = p.id) AS legs_won,
-               (SELECT COALESCE(SUM(t.scored), 0) FROM turns t JOIN legs l ON l.id = t.leg_id
-                 WHERE l.game_id = g.id AND t.player_id = p.id) AS scored,
-               (SELECT COUNT(*) FROM turns t JOIN legs l ON l.id = t.leg_id
-                 WHERE l.game_id = g.id AND t.player_id = p.id) AS turns,
-               (SELECT COUNT(*) FROM darts d JOIN turns t ON t.id = d.turn_id JOIN legs l ON l.id = t.leg_id
-                 WHERE l.game_id = g.id AND t.player_id = p.id) AS darts
-             FROM (SELECT * FROM games ORDER BY started_at DESC LIMIT ?) g
-             JOIN game_players gp ON gp.game_id = g.id
-             JOIN players p ON p.id = gp.player_id
-             ORDER BY g.started_at DESC, g.id, gp.seat",
-        )
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await?;
+        self.summaries("SELECT * FROM games ORDER BY started_at DESC LIMIT ?2", None, limit).await
+    }
 
+    /// The most recent games of one player, newest first.
+    pub async fn games_of(&self, player: &str, limit: i64) -> Result<Vec<GameSummary>, sqlx::Error> {
+        self.summaries(
+            "SELECT * FROM games WHERE id IN (SELECT game_id FROM game_players WHERE player_id = ?1)
+             ORDER BY started_at DESC LIMIT ?2",
+            Some(player),
+            limit,
+        )
+        .await
+    }
+
+    async fn summaries(&self, games: &'static str, player: Option<&str>, limit: i64) -> Result<Vec<GameSummary>, sqlx::Error> {
+        let sql = SUMMARIES.replace("{games}", games);
+        let rows = sqlx::query(sqlx::AssertSqlSafe(sql))
+            .bind(player)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await?;
         let mut games: Vec<GameSummary> = Vec::new();
         for r in rows {
             let id: String = r.try_get("id")?;
@@ -352,6 +353,102 @@ impl Local {
             });
         }
         Ok(games)
+    }
+
+    /// Everything the statistics view shows for one player.
+    pub async fn stats(&self, player: &str) -> Result<PlayerStats, sqlx::Error> {
+        // X01 turns of the player, numbered within each leg.
+        const X01_TURNS: &str = "WITH t AS (
+              SELECT t.*, l.game_id, l.winner_id AS leg_winner,
+                     ROW_NUMBER() OVER (PARTITION BY t.leg_id ORDER BY t.turn_no) AS n,
+                     (SELECT COUNT(*) FROM darts d WHERE d.turn_id = t.id) AS darts,
+                     COALESCE(json_extract(g.settings_json, '$.doubleOut'), 1) AS double_out
+              FROM turns t JOIN legs l ON l.id = t.leg_id JOIN games g ON g.id = l.game_id
+              WHERE g.mode = 'x01' AND t.player_id = ?1)";
+
+        let totals = sqlx::query(sqlx::AssertSqlSafe(format!(
+            "{X01_TURNS}
+             SELECT COUNT(DISTINCT game_id) AS games,
+                    COALESCE(SUM(darts), 0) AS darts, COALESCE(SUM(scored), 0) AS scored,
+                    COALESCE(SUM(CASE WHEN n <= 3 THEN darts END), 0) AS f9_darts,
+                    COALESCE(SUM(CASE WHEN n <= 3 THEN scored END), 0) AS f9_scored,
+                    COUNT(CASE WHEN scored = 180 THEN 1 END) AS n180,
+                    COUNT(CASE WHEN scored >= 140 AND scored < 180 THEN 1 END) AS n140,
+                    COUNT(CASE WHEN scored >= 100 AND scored < 140 THEN 1 END) AS n100,
+                    COUNT(CASE WHEN checkout THEN 1 END) AS checkouts,
+                    COUNT(CASE WHEN double_out AND score_before BETWEEN 2 AND 170
+                               AND score_before NOT IN (159, 162, 163, 165, 166, 168, 169) THEN 1 END) AS chances,
+                    COALESCE(MAX(CASE WHEN checkout THEN score_before END), 0) AS best_checkout
+             FROM t"
+        )))
+        .bind(player)
+        .fetch_one(&self.pool)
+        .await?;
+
+        let legs = sqlx::query(sqlx::AssertSqlSafe(format!(
+            "{X01_TURNS}
+             SELECT COUNT(DISTINCT leg_id) AS played,
+                    COUNT(DISTINCT CASE WHEN leg_winner = ?1 THEN leg_id END) AS won,
+                    (SELECT MIN(d) FROM (SELECT SUM(darts) AS d FROM t WHERE leg_winner = ?1 GROUP BY leg_id)) AS best_leg
+             FROM t"
+        )))
+        .bind(player)
+        .fetch_one(&self.pool)
+        .await?;
+
+        let timeline = sqlx::query(sqlx::AssertSqlSafe(format!(
+            "{X01_TURNS}
+             SELECT game_id, g.started_at, SUM(darts) AS darts, SUM(scored) AS scored,
+                    SUM(CASE WHEN n <= 3 THEN darts END) AS f9_darts, SUM(CASE WHEN n <= 3 THEN scored END) AS f9_scored
+             FROM t JOIN games g ON g.id = t.game_id
+             GROUP BY game_id ORDER BY g.started_at"
+        )))
+        .bind(player)
+        .fetch_all(&self.pool)
+        .await?
+        .iter()
+        .map(|r| {
+            let avg = |s: i64, d: Option<i64>| d.filter(|d| *d > 0).map(|d| s as f64 * 3.0 / d as f64).unwrap_or(0.0);
+            Ok(GamePoint {
+                game_id: r.try_get("game_id")?,
+                started_at: r.try_get("started_at")?,
+                average: avg(r.try_get("scored")?, r.try_get("darts")?),
+                first9: avg(r.try_get::<Option<i64>, _>("f9_scored")?.unwrap_or(0), r.try_get("f9_darts")?),
+            })
+        })
+        .collect::<Result<_, sqlx::Error>>()?;
+
+        let heat = sqlx::query(
+            "SELECT d.segment, d.ring, COUNT(*) AS n FROM darts d JOIN turns t ON t.id = d.turn_id
+             WHERE t.player_id = ? GROUP BY d.segment, d.ring",
+        )
+        .bind(player)
+        .fetch_all(&self.pool)
+        .await?
+        .iter()
+        .map(|r| Ok(HeatCell { segment: r.try_get("segment")?, ring: r.try_get("ring")?, count: r.try_get("n")? }))
+        .collect::<Result<_, sqlx::Error>>()?;
+
+        let i = |k: &str| totals.try_get::<i64, _>(k);
+        Ok(PlayerStats {
+            games: i("games")?,
+            legs_played: legs.try_get("played")?,
+            legs_won: legs.try_get("won")?,
+            best_leg: legs.try_get("best_leg")?,
+            darts: i("darts")?,
+            scored: i("scored")?,
+            first9_darts: i("f9_darts")?,
+            first9_scored: i("f9_scored")?,
+            n180: i("n180")?,
+            n140: i("n140")?,
+            n100: i("n100")?,
+            checkouts: i("checkouts")?,
+            checkout_chances: i("chances")?,
+            best_checkout: i("best_checkout")?,
+            timeline,
+            heat,
+            training: self.games_of(player, 500).await?.into_iter().filter(|g| g.mode != "x01").collect(),
+        })
     }
 
     /// Changes waiting for the remote database, one per entity, oldest first.
@@ -419,6 +516,21 @@ impl Local {
         Ok(())
     }
 }
+
+const SUMMARIES: &str = "SELECT g.id, g.mode, g.settings_json, g.started_at, g.finished_at, g.winner_id,
+               (SELECT COUNT(*) FROM legs l WHERE l.game_id = g.id) AS legs,
+               p.id AS player_id, p.name,
+               (SELECT COUNT(*) FROM legs l WHERE l.game_id = g.id AND l.winner_id = p.id) AS legs_won,
+               (SELECT COALESCE(SUM(t.scored), 0) FROM turns t JOIN legs l ON l.id = t.leg_id
+                 WHERE l.game_id = g.id AND t.player_id = p.id) AS scored,
+               (SELECT COUNT(*) FROM turns t JOIN legs l ON l.id = t.leg_id
+                 WHERE l.game_id = g.id AND t.player_id = p.id) AS turns,
+               (SELECT COUNT(*) FROM darts d JOIN turns t ON t.id = d.turn_id JOIN legs l ON l.id = t.leg_id
+                 WHERE l.game_id = g.id AND t.player_id = p.id) AS darts
+             FROM ({games}) g
+             JOIN game_players gp ON gp.game_id = g.id
+             JOIN players p ON p.id = gp.player_id
+             ORDER BY g.started_at DESC, g.id, gp.seat";
 
 fn player_row(r: &sqlx::sqlite::SqliteRow) -> Result<Player, sqlx::Error> {
     Ok(Player {
@@ -532,6 +644,41 @@ mod tests {
 
         db.delete_game(&g.id).await.unwrap();
         assert_eq!(db.pending().await.unwrap().last().unwrap().op, "delete");
+    }
+
+    #[tokio::test]
+    async fn stats_cover_x01_totals_heat_and_training() {
+        let db = Local::memory().await.unwrap();
+        let a = db.player_named("Ala").await.unwrap();
+        let b = db.player_named("Bob").await.unwrap();
+        let mut g = game(&[&a, &b], 2);
+        g.legs[1].turns.push(TurnRecord {
+            player_id: a.id.clone(),
+            turn_no: 2,
+            target: None,
+            score_before: 40,
+            scored: 40,
+            bust: false,
+            checkout: true,
+            darts: vec![dart(20, "double", 40)],
+        });
+        db.save_game(&g).await.unwrap();
+        let mut drill = game(&[&a], 1);
+        drill.mode = "bobs27".into();
+        db.save_game(&drill).await.unwrap();
+
+        let st = db.stats(&a.id).await.unwrap();
+        // The drill's darts count for the heat map only.
+        assert_eq!((st.games, st.legs_played, st.legs_won, st.best_leg), (1, 2, 2, Some(3)));
+        assert_eq!((st.darts, st.scored, st.n140, st.n100), (7, 320, 2, 0));
+        assert_eq!((st.first9_darts, st.first9_scored), (7, 320));
+        assert_eq!((st.checkouts, st.checkout_chances, st.best_checkout), (1, 1, 40));
+        assert_eq!(st.timeline.len(), 1);
+        assert!((st.timeline[0].average - 320.0 * 3.0 / 7.0).abs() < 1e-9);
+        let t20 = st.heat.iter().find(|h| h.segment == 20 && h.ring == "triple").unwrap();
+        assert_eq!(t20.count, 6);
+        assert_eq!(st.training.len(), 1);
+        assert_eq!(db.stats(&b.id).await.unwrap().darts, 0);
     }
 
     #[tokio::test]

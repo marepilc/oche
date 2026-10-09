@@ -148,9 +148,11 @@ oche/
 3. ✅ **X01** — 301/501/701, double in/out, bust, cofanie, podpowiedź checkoutu, dowolna liczba graczy.
 3a. ✅ **Języki** — angielski (domyślny) i polski, ustawienia.
 4. ✅ **Zapis lokalny** — SQLite, migracje, gracze, historia gier.
-5. **Statystyki** — średnie w czasie, mapa cieplna, rekordy.
+5. ✅ **Statystyki** (`Ctrl+S`) — średnia i first 9, checkout % (tury zaczęte na zamknięciu do 170),
+   180/140+/100+, najlepszy leg i zamknięcie, średnia w kolejnych grach, mapa cieplna, wyniki treningów.
+   Do zrobienia: porównanie graczy, zakresy dat.
 6. ✅ **Zdalna baza** — PostgreSQL: ustawienia, keyring, migracje, outbox i synchronizacja.
-   Do zrobienia: import ze zdalnej bazy, MySQL/MariaDB.
+   Import ze zdalnej bazy (automatycznie przy podłączeniu istniejącej bazy Oche i przyciskiem). Do zrobienia: MySQL/MariaDB.
 7. **Więcej trybów** — ✅ trening (X01 solo, Checkout, Scoring, Bob's 27); Cricket, Around the Clock.
 8. **Wydanie** — PKGBUILD/AUR, wydania na GitHubie.
 
