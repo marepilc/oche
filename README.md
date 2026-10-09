@@ -53,7 +53,13 @@ the last dart — across turns and legs — and `Esc` clears the line. Clicking 
 
 ### Arch Linux / Omarchy
 
-Build the package from the repository and install it:
+Download `oche-*.pkg.tar.zst` from the [latest release](https://github.com/marepilc/oche/releases/latest) and install it:
+
+```sh
+sudo pacman -U oche-*-x86_64.pkg.tar.zst
+```
+
+Or build the package from the repository:
 
 ```sh
 packaging/arch/build-local.sh           # builds the current commit
@@ -67,7 +73,7 @@ Remembering the password of a remote database needs a Secret Service provider su
 
 ### Other distributions
 
-Tagged releases have `.deb`, `.rpm` and AppImage builds attached. Building from source works anywhere Tauri 2 does (below).
+[Releases](https://github.com/marepilc/oche/releases) have `.deb`, `.rpm` and AppImage builds attached. Building from source works anywhere Tauri 2 does (below).
 
 ### Where things are
 
@@ -125,8 +131,10 @@ TypeScript checks that every key is there.
 ### Releasing
 
 1. Bump the version in `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json` and `packaging/arch/PKGBUILD`, and add it to `CHANGELOG.md`.
-2. Tag `vX.Y.Z` and push the tag: the release workflow builds the Linux bundles into a draft release.
-3. In `packaging/arch`, run `updpkgsums` and publish the PKGBUILD to the AUR.
+2. Tag `vX.Y.Z` and push the tag. The release workflow takes the notes from `CHANGELOG.md`, builds the
+   `.deb`, `.rpm`, AppImage and the Arch package, and publishes the release once all of them are attached.
+   If a build fails the release stays a draft; fix it, delete the draft and the tag, and tag again.
+3. For the AUR, run `updpkgsums` in `packaging/arch` and publish the PKGBUILD.
 
 ## License
 
